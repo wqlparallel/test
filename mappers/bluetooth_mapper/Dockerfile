@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM armv7/armhf-ubuntu:latest
 
 RUN mkdir -p kubeedge
 
@@ -6,4 +6,4 @@ COPY . kubeedge/
 
 WORKDIR kubeedge
 
-ENTRYPOINT ["/kubeedge/main","--logtostderr=true"]
+CMD /kubeedge/bluetooth_mapper
