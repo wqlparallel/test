@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
@@ -16,7 +16,7 @@ const (
 	syncMsgRespTimeout = 1 * time.Minute
 )
 
-//CoreInterface is interface of mataclient
+//CoreInterface is interface of metaclient
 type CoreInterface interface {
 	PodsGetter
 	PodStatusGetter

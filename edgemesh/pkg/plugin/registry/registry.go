@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/go-chassis/go-chassis/core/registry"
-	"github.com/go-chassis/go-chassis/pkg/util/tags"
+	utiltags "github.com/go-chassis/go-chassis/pkg/util/tags"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
 	"github.com/kubeedge/kubeedge/edgemesh/pkg/cache"
@@ -186,6 +186,10 @@ func (esd *EdgeServiceDiscovery) getPods(name, namespace string) ([]v1.Pod, erro
 		if !ok {
 			klog.Errorf("[EdgeMesh] pods %s from cache with invalid type", key)
 			return nil, fmt.Errorf("pods %s from cache with invalid type", key)
+		}
+		if len(pods) == 0 {
+			klog.Errorf("[EdgeMesh] pod list %s is empty", key)
+			return nil, fmt.Errorf("pod list %s is empty", key)
 		}
 		klog.Infof("[EdgeMesh] get pods %s from cache", key)
 	} else {

@@ -76,7 +76,7 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 					UpdateNode:                 constants.DefaultUpdateNodeBuffer,
 					DeletePod:                  constants.DefaultDeletePodBuffer,
 				},
-				Context: &cloudcoreconfig.EdgeControllerContext{
+				Context: &cloudcoreconfig.ControllerContext{
 					SendModule:     metaconfig.ModuleNameMetaManager,
 					ReceiveModule:  metaconfig.ModuleNameEdgeController,
 					ResponseModule: metaconfig.ModuleNameMetaManager,
@@ -112,8 +112,8 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 				RuntimeRequestTimeout:       constants.DefaultRuntimeRequestTimeout,
 				HostnameOverride:            hostnameOverride,
 				RegisterNode:                true,
+				ConcurrentConsumers:         constants.DefaultConcurrentConsumers,
 				RegisterNodeNamespace:       constants.DefaultRegisterNodeNamespace,
-				InterfaceName:               constants.DefaultInterfaceName,
 				DevicePluginEnabled:         false,
 				GPUPluginEnabled:            false,
 				ImageGCHighThreshold:        constants.DefaultImageGCHighThreshold,
@@ -126,6 +126,7 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 				ContextSendGroup:      metaconfig.GroupNameEdgeController,
 				ContextSendModule:     metaconfig.ModuleNameEdgeController,
 				PodStatusSyncInterval: constants.DefaultPodStatusSyncInterval,
+				RemoteQueryTimeout:    constants.DefaultRemoteQueryTimeout,
 			},
 		},
 	}
@@ -161,7 +162,6 @@ func NewMinEdgeSiteConfig() *EdgeSiteConfig {
 				RemoteImageEndpoint:   constants.DefaultRemoteImageEndpoint,
 				PodSandboxImage:       util.GetPodSandboxImage(),
 				HostnameOverride:      hostnameOverride,
-				InterfaceName:         constants.DefaultInterfaceName,
 				DevicePluginEnabled:   false,
 				GPUPluginEnabled:      false,
 				CGroupDriver:          edgecoreconfig.CGroupDriverCGroupFS,

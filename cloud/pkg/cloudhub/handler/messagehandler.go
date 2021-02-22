@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,20 +12,24 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	beehiveModel "github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/cloud/pkg/apis/reliablesyncs/v1alpha1"
+	crdClientset "github.com/kubeedge/kubeedge/cloud/pkg/client/clientset/versioned"
 	"github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/channelq"
 	hubio "github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/common/io"
 	"github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/common/model"
 	hubconfig "github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/config"
+	"github.com/kubeedge/kubeedge/cloud/pkg/common/client"
+	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	deviceconst "github.com/kubeedge/kubeedge/cloud/pkg/devicecontroller/constants"
 	edgeconst "github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/constants"
 	edgemessagelayer "github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/messagelayer"
 	"github.com/kubeedge/kubeedge/cloud/pkg/synccontroller"
 	"github.com/kubeedge/kubeedge/common/constants"
+	"github.com/kubeedge/kubeedge/pkg/metaserver/util"
 	"github.com/kubeedge/viaduct/pkg/conn"
 	"github.com/kubeedge/viaduct/pkg/mux"
 )
@@ -60,8 +65,9 @@ type MessageHandle struct {
 	MessageQueue      *channelq.ChannelMessageQueue
 	Handlers          []HandleFunc
 	NodeLimit         int
-	KeepaliveChannel  map[string]chan struct{}
+	KeepaliveChannel  sync.Map
 	MessageAcks       sync.Map
+	crdClient         crdClientset.Interface
 }
 
 type HandleFunc func(info *model.HubInfo, exitServe chan ExitCode)
@@ -79,9 +85,9 @@ func InitHandler(eventq *channelq.ChannelMessageQueue) {
 			WriteTimeout:      int(hubconfig.Config.WriteTimeout),
 			MessageQueue:      eventq,
 			NodeLimit:         int(hubconfig.Config.NodeLimit),
+			crdClient:         client.GetCRDClient(),
 		}
 
-		CloudhubHandler.KeepaliveChannel = make(map[string]chan struct{})
 		CloudhubHandler.Handlers = []HandleFunc{
 			CloudhubHandler.KeepaliveCheckLoop,
 			CloudhubHandler.MessageWriteLoop,
@@ -107,9 +113,16 @@ func (mh *MessageHandle) HandleServer(container *mux.MessageContainer, writer mu
 		return
 	}
 
+	klog.V(4).Infof("[cloudhub/HandlerServer] get msg from edge(%v): %+v", nodeID, container.Message)
 	if container.Message.GetOperation() == model.OpKeepalive {
-		klog.Infof("Keepalive message received from node: %s", nodeID)
-		mh.KeepaliveChannel[nodeID] <- struct{}{}
+		klog.V(4).Infof("Keepalive message received from node: %s", nodeID)
+
+		nodeKeepalive, ok := mh.KeepaliveChannel.Load(nodeID)
+		if !ok {
+			klog.Errorf("Failed to load node : %s", nodeID)
+			return
+		}
+		nodeKeepalive.(chan struct{}) <- struct{}{}
 		return
 	}
 
@@ -126,12 +139,15 @@ func (mh *MessageHandle) HandleServer(container *mux.MessageContainer, writer mu
 			mh.MessageAcks.Delete(container.Message.Header.ParentID)
 		}
 		return
-	}
-
-	err := mh.PubToController(&model.HubInfo{ProjectID: projectID, NodeID: nodeID}, container.Message)
-	if err != nil {
-		// if err, we should stop node, write data to edgehub, stop nodify
-		klog.Errorf("Failed to serve handle with error: %s", err.Error())
+	} else if container.Message.GetOperation() == "upload" && container.Message.GetGroup() == modules.UserGroup {
+		container.Message.Router.Resource = fmt.Sprintf("node/%s/%s", nodeID, container.Message.Router.Resource)
+		beehiveContext.Send(modules.RouterModuleName, *container.Message)
+	} else {
+		err := mh.PubToController(&model.HubInfo{ProjectID: projectID, NodeID: nodeID}, container.Message)
+		if err != nil {
+			// if err, we should stop node, write data to edgehub, stop nodify
+			klog.Errorf("Failed to serve handle with error: %s", err.Error())
+		}
 	}
 }
 
@@ -140,8 +156,8 @@ func (mh *MessageHandle) OnRegister(connection conn.Connection) {
 	nodeID := connection.ConnectionState().Headers.Get("node_id")
 	projectID := connection.ConnectionState().Headers.Get("project_id")
 
-	if _, ok := mh.KeepaliveChannel[nodeID]; !ok {
-		mh.KeepaliveChannel[nodeID] = make(chan struct{}, 1)
+	if _, ok := mh.KeepaliveChannel.Load(nodeID); !ok {
+		mh.KeepaliveChannel.Store(nodeID, make(chan struct{}, 1))
 	}
 
 	io := &hubio.JSONIO{Connection: connection}
@@ -160,14 +176,24 @@ func (mh *MessageHandle) OnRegister(connection conn.Connection) {
 // KeepaliveCheckLoop checks whether the edge node is still alive
 func (mh *MessageHandle) KeepaliveCheckLoop(info *model.HubInfo, stopServe chan ExitCode) {
 	keepaliveTicker := time.NewTimer(time.Duration(mh.KeepaliveInterval) * time.Second)
+	nodeKeepaliveChannel, _ := mh.KeepaliveChannel.Load(info.NodeID)
+
 	for {
 		select {
-		case _, ok := <-mh.KeepaliveChannel[info.NodeID]:
+		case _, ok := <-nodeKeepaliveChannel.(chan struct{}):
 			if !ok {
 				klog.Warningf("Stop keepalive check for node: %s", info.NodeID)
 				return
 			}
-			klog.Infof("Node %s is still alive", info.NodeID)
+
+			// Reset is called after Stop or expired timer
+			if !keepaliveTicker.Stop() {
+				select {
+				case <-keepaliveTicker.C:
+				default:
+				}
+			}
+			klog.V(4).Infof("Node %s is still alive", info.NodeID)
 			keepaliveTicker.Reset(time.Duration(mh.KeepaliveInterval) * time.Second)
 		case <-keepaliveTicker.C:
 			if conn, ok := mh.nodeConns.Load(info.NodeID); ok {
@@ -225,7 +251,6 @@ func constructConnectMessage(info *model.HubInfo, isConnected bool) *beehiveMode
 
 func (mh *MessageHandle) PubToController(info *model.HubInfo, msg *beehiveModel.Message) error {
 	msg.SetResourceOperation(fmt.Sprintf("node/%s/%s", info.NodeID, msg.GetResource()), msg.GetOperation())
-	klog.Infof("event received for node %s %s, content: %s", info.NodeID, dumpMessageMetadata(msg), msg.Content)
 	if model.IsFromEdge(msg) {
 		err := mh.MessageQueue.Publish(msg)
 		if err != nil {
@@ -304,8 +329,13 @@ func (mh *MessageHandle) UnregisterNode(info *model.HubInfo, code ExitCode) {
 	mh.nodeLocks.Delete(info.NodeID)
 	mh.nodeConns.Delete(info.NodeID)
 	mh.nodeRegistered.Delete(info.NodeID)
-	close(mh.KeepaliveChannel[info.NodeID])
-	delete(mh.KeepaliveChannel, info.NodeID)
+	nodeKeepalive, ok := mh.KeepaliveChannel.Load(info.NodeID)
+	if !ok {
+		klog.Errorf("fail to load node %s", info.NodeID)
+	} else {
+		close(nodeKeepalive.(chan struct{}))
+		mh.KeepaliveChannel.Delete(info.NodeID)
+	}
 
 	err := mh.MessageQueue.Publish(constructConnectMessage(info, false))
 	if err != nil {
@@ -375,10 +405,14 @@ func (mh *MessageHandle) ListMessageWriteLoop(info *model.HubInfo, stopServe cha
 			continue
 		}
 
-		mh.send(conn.(hubio.CloudHubIO), info, msg)
+		if err := mh.send(conn.(hubio.CloudHubIO), info, msg); err != nil {
+			klog.Errorf("failed to send to cloudhub, err: %v", err)
+		}
 
 		// delete successfully sent events from the queue/store
-		nodeListStore.Delete(msg)
+		if err := nodeListStore.Delete(msg); err != nil {
+			klog.Errorf("failed to delete msg from store, err: %v", err)
+		}
 
 		nodeListQueue.Forget(key.(string))
 		nodeListQueue.Done(key)
@@ -400,18 +434,20 @@ func (mh *MessageHandle) MessageWriteLoop(info *model.HubInfo, stopServe chan Ex
 		obj, exist, _ := nodeStore.GetByKey(key.(string))
 		if !exist {
 			klog.Errorf("nodeStore for node %s doesn't exist", info.NodeID)
+			nodeQueue.Done(key)
 			continue
 		}
 		msg := obj.(*beehiveModel.Message)
 
 		if !model.IsToEdge(msg) {
 			klog.Infof("skip only to cloud event for node %s, %s, content %s", info.NodeID, dumpMessageMetadata(msg), msg.Content)
+			nodeQueue.Done(key)
 			continue
 		}
 		klog.V(4).Infof("event to send for node %s, %s, content %s", info.NodeID, dumpMessageMetadata(msg), msg.Content)
 
 		copyMsg := deepcopy(msg)
-		trimMessage(msg)
+		trimMessage(copyMsg)
 
 		for {
 			conn, ok := mh.nodeConns.Load(info.NodeID)
@@ -419,10 +455,10 @@ func (mh *MessageHandle) MessageWriteLoop(info *model.HubInfo, stopServe chan Ex
 				time.Sleep(time.Second * 2)
 				continue
 			}
-			err := mh.sendMsg(conn.(hubio.CloudHubIO), info, msg, copyMsg, nodeStore)
+			err := mh.sendMsg(conn.(hubio.CloudHubIO), info, copyMsg, msg, nodeStore)
 			if err != nil {
 				klog.Errorf("Failed to send event to node: %s, affected event: %s, err: %s",
-					info.NodeID, dumpMessageMetadata(msg), err.Error())
+					info.NodeID, dumpMessageMetadata(copyMsg), err.Error())
 				nodeQueue.AddRateLimited(key.(string))
 				time.Sleep(time.Second * 2)
 			}
@@ -434,9 +470,9 @@ func (mh *MessageHandle) MessageWriteLoop(info *model.HubInfo, stopServe chan Ex
 	}
 }
 
-func (mh *MessageHandle) sendMsg(hi hubio.CloudHubIO, info *model.HubInfo, msg, copyMsg *beehiveModel.Message, nodeStore cache.Store) error {
+func (mh *MessageHandle) sendMsg(hi hubio.CloudHubIO, info *model.HubInfo, copyMsg, msg *beehiveModel.Message, nodeStore cache.Store) error {
 	ackChan := make(chan struct{})
-	mh.MessageAcks.Store(msg.GetID(), ackChan)
+	mh.MessageAcks.Store(copyMsg.GetID(), ackChan)
 
 	// initialize timer and retry count for sending message
 	var (
@@ -444,7 +480,7 @@ func (mh *MessageHandle) sendMsg(hi hubio.CloudHubIO, info *model.HubInfo, msg, 
 		retryInterval time.Duration = 5
 	)
 	ticker := time.NewTimer(retryInterval * time.Second)
-	err := mh.send(hi, info, msg)
+	err := mh.send(hi, info, copyMsg)
 	if err != nil {
 		return err
 	}
@@ -453,13 +489,13 @@ LOOP:
 	for {
 		select {
 		case <-ackChan:
-			mh.saveSuccessPoint(copyMsg, info, nodeStore)
+			mh.saveSuccessPoint(msg, info, nodeStore)
 			break LOOP
 		case <-ticker.C:
 			if retry == 4 {
 				break LOOP
 			}
-			err := mh.send(hi, info, msg)
+			err := mh.send(hi, info, copyMsg)
 			if err != nil {
 				return err
 			}
@@ -485,21 +521,25 @@ func (mh *MessageHandle) saveSuccessPoint(msg *beehiveModel.Message, info *model
 		resourceType, _ := edgemessagelayer.GetResourceType(*msg)
 		resourceUID, err := channelq.GetMessageUID(*msg)
 		if err != nil {
+			klog.Errorf("failed to get message UID %v, err: %v", msg, err)
 			return
 		}
 
 		objectSyncName := synccontroller.BuildObjectSyncName(info.NodeID, resourceUID)
 
 		if msg.GetOperation() == beehiveModel.DeleteOperation {
-			nodeStore.Delete(msg)
+			if err := nodeStore.Delete(msg); err != nil {
+				klog.Errorf("failed to delete message %v, err: %v", msg, err)
+				return
+			}
 			mh.deleteSuccessPoint(resourceNamespace, objectSyncName)
 			return
 		}
 
-		objectSync, err := mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Get(objectSyncName, metav1.GetOptions{})
+		objectSync, err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Get(context.Background(), objectSyncName, metav1.GetOptions{})
 		if err == nil {
 			objectSync.Status.ObjectResourceVersion = msg.GetResourceVersion()
-			_, err := mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).UpdateStatus(objectSync)
+			_, err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).UpdateStatus(context.Background(), objectSync, metav1.UpdateOptions{})
 			if err != nil {
 				klog.Errorf("Failed to update objectSync: %v, resourceType: %s, resourceNamespace: %s, resourceName: %s",
 					err, resourceType, resourceNamespace, resourceName)
@@ -510,34 +550,38 @@ func (mh *MessageHandle) saveSuccessPoint(msg *beehiveModel.Message, info *model
 					Name: objectSyncName,
 				},
 				Spec: v1alpha1.ObjectSyncSpec{
-					ObjectAPIVersion: "",
-					ObjectKind:       resourceType,
+					ObjectAPIVersion: util.GetMessageAPIVerison(msg),
+					ObjectKind:       util.GetMessageResourceType(msg),
 					ObjectName:       resourceName,
 				},
 			}
-			_, err := mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Create(objectSync)
+			_, err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Create(context.Background(), objectSync, metav1.CreateOptions{})
 			if err != nil {
 				klog.Errorf("Failed to create objectSync: %s, err: %v", objectSyncName, err)
 				return
 			}
 
-			objectSyncStatus, err := mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Get(objectSyncName, metav1.GetOptions{})
+			objectSyncStatus, err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Get(context.Background(), objectSyncName, metav1.GetOptions{})
 			if err != nil {
 				klog.Errorf("Failed to get objectSync: %s, err: %v", objectSyncName, err)
 			}
 			objectSyncStatus.Status.ObjectResourceVersion = msg.GetResourceVersion()
-			mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).UpdateStatus(objectSyncStatus)
+			if _, err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).UpdateStatus(context.Background(), objectSyncStatus, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("Failed to update objectSync: %s, err: %v", objectSyncName, err)
+			}
 		}
 	}
 
 	// TODO: save device info
 	if msg.GetGroup() == deviceconst.GroupTwin {
 	}
-	klog.Infof("saveSuccessPoint successfully for message: %s", msg.GetResource())
+	klog.V(4).Infof("saveSuccessPoint successfully for message: %s", msg.GetResource())
 }
 
 func (mh *MessageHandle) deleteSuccessPoint(resourceNamespace, objectSyncName string) {
-	mh.MessageQueue.ObjectSyncController.CrdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Delete(objectSyncName, metav1.NewDeleteOptions(0))
+	if err := mh.crdClient.ReliablesyncsV1alpha1().ObjectSyncs(resourceNamespace).Delete(context.Background(), objectSyncName, *metav1.NewDeleteOptions(0)); err != nil {
+		klog.Errorf("Delete Success Point failed with error: %v", err)
+	}
 }
 
 func (mh *MessageHandle) getNodeConnection(nodeid string) (hubio.CloudHubIO, error) {

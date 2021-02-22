@@ -26,9 +26,11 @@ import (
 	"strings"
 
 	"github.com/emicklei/go-restful"
-	"k8s.io/klog"
+	"k8s.io/apimachinery/pkg/util/httpstream"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/kubeedge/cloud/pkg/cloudstream/config"
+	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/kubeedge/pkg/stream/flushwriter"
 )
 
@@ -80,10 +82,19 @@ func (s *StreamServer) installDebugHandler() {
 	ws.Route(ws.GET("/{namespace}/{podName}/{uid}/{containerName}").
 		To(s.getMetrics))
 	s.container.Add(ws)
-}
 
-func (s *StreamServer) getExec(r *restful.Request, w *restful.Response) {
-	// TODO @kadisi
+	// metrics api is widely used for Prometheus
+	ws = new(restful.WebService)
+	ws.Path("/metrics")
+	ws.Route(ws.GET("").
+		To(s.getMetrics))
+	ws.Route(ws.GET("/cadvisor").
+		To(s.getMetrics))
+	ws.Route(ws.GET("/probes").
+		To(s.getMetrics))
+	ws.Route(ws.GET("/resource").
+		To(s.getMetrics))
+	s.container.Add(ws)
 }
 
 func (s *StreamServer) getContainerLogs(r *restful.Request, w *restful.Response) {
@@ -147,24 +158,25 @@ func (s *StreamServer) getMetrics(r *restful.Request, w *restful.Response) {
 	}()
 
 	sessionKey := strings.Split(r.Request.Host, ":")[0]
+	if forwardedURI := r.Request.Header.Get("X-Forwarded-Uri"); forwardedURI != "" {
+		if t := strings.Split(forwardedURI, "/"); strings.HasPrefix(forwardedURI, "/api/v1/nodes/") && len(t) > 6 {
+			sessionKey = t[4]
+			if ip, ok := s.tunnel.getNodeIP(sessionKey); ok {
+				r.Request.Host = fmt.Sprintf("%s:%d", ip, constants.ServerPort)
+			}
+		}
+	}
 	session, ok := s.tunnel.getSession(sessionKey)
 	if !ok {
 		err = fmt.Errorf("Can not find %v session ", sessionKey)
 		return
 	}
 
-	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
-
-	if _, ok := w.ResponseWriter.(http.Flusher); !ok {
-		err = fmt.Errorf("Unable to convert %v into http.Flusher, cannot grab metrics data from edge", reflect.TypeOf(w))
-		return
-	}
-	fw := flushwriter.Wrap(w.ResponseWriter)
 
 	metricsConnection, err := session.AddAPIServerConnection(s, &ContainerMetricsConnection{
 		r:            r,
-		flush:        fw,
+		writer:       w.ResponseWriter,
 		session:      session,
 		ctx:          r.Request.Context(),
 		edgePeerStop: make(chan struct{}),
@@ -186,6 +198,68 @@ func (s *StreamServer) getMetrics(r *restful.Request, w *restful.Response) {
 	}
 }
 
+func (s *StreamServer) getExec(request *restful.Request, response *restful.Response) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+			klog.Errorf(err.Error())
+		}
+	}()
+
+	sessionKey := strings.Split(request.Request.Host, ":")[0]
+	session, ok := s.tunnel.getSession(sessionKey)
+	if !ok {
+		err = fmt.Errorf("Exec: Can not find %v session ", sessionKey)
+		return
+	}
+
+	if !httpstream.IsUpgradeRequest(request.Request) {
+		err = fmt.Errorf("Request was not an upgrade")
+		return
+	}
+
+	// Once the connection is hijacked, the ErrorResponder will no longer work, so
+	// hijacking should be the last step in the upgrade.
+	requestHijacker, ok := response.ResponseWriter.(http.Hijacker)
+	if !ok {
+		klog.V(6).Infof("Unable to hijack response writer: %T", response.ResponseWriter)
+		err = fmt.Errorf("request connection cannot be hijacked: %T", response.ResponseWriter)
+		return
+	}
+	requestHijackedConn, _, err := requestHijacker.Hijack()
+	if err != nil {
+		klog.V(6).Infof("Unable to hijack response: %v", err)
+		err = fmt.Errorf("error hijacking connection: %v", err)
+		return
+	}
+	defer requestHijackedConn.Close()
+
+	execConnection, err := session.AddAPIServerConnection(s, &ContainerExecConnection{
+		r:            request,
+		Conn:         requestHijackedConn,
+		session:      session,
+		ctx:          request.Request.Context(),
+		edgePeerStop: make(chan struct{}),
+	})
+	if err != nil {
+		klog.Errorf("Add apiserver exec connection into %s error %v", session.String(), err)
+		return
+	}
+
+	defer func() {
+		session.DeleteAPIServerConnection(execConnection)
+		klog.Infof("Delete %s from %s", execConnection.String(), session.String())
+	}()
+
+	if err := execConnection.Serve(); err != nil {
+		err = fmt.Errorf("apiconnection Serve %s in %s error %v",
+			execConnection.String(), session.String(), err)
+		return
+	}
+}
+
 func (s *StreamServer) Start() {
 	s.installDebugHandler()
 
@@ -197,7 +271,7 @@ func (s *StreamServer) Start() {
 	}
 	pool.AppendCertsFromPEM(data)
 
-	tunnelServer := &http.Server{
+	streamServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Config.StreamPort),
 		Handler: s.container,
 		TLSConfig: &tls.Config{
@@ -207,7 +281,7 @@ func (s *StreamServer) Start() {
 		},
 	}
 	klog.Infof("Prepare to start stream server ...")
-	err = tunnelServer.ListenAndServeTLS(config.Config.TLSStreamCertFile, config.Config.TLSStreamPrivateKeyFile)
+	err = streamServer.ListenAndServeTLS(config.Config.TLSStreamCertFile, config.Config.TLSStreamPrivateKeyFile)
 	if err != nil {
 		klog.Fatalf("Start stream server error %v\n", err)
 		return

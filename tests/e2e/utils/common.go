@@ -18,8 +18,10 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -33,12 +35,12 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	apps "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/kubeedge/kubeedge/cloud/pkg/apis/devices/v1alpha1"
+	"github.com/kubeedge/kubeedge/cloud/pkg/apis/devices/v1alpha2"
 	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/viaduct/pkg/api"
 )
@@ -54,6 +56,7 @@ const (
 	ModBus            = "modbus"
 	Led               = "led"
 	IncorrectInstance = "incorrect-instance"
+	Customized        = "customized"
 )
 
 var (
@@ -635,8 +638,8 @@ func HandleDeviceInstance(operation string, apiserver string, nodeSelector strin
 }
 
 // newDeviceInstanceObject creates a new device instance object
-func newDeviceInstanceObject(nodeSelector string, protocolType string, updated bool) *v1alpha1.Device {
-	var deviceInstance v1alpha1.Device
+func newDeviceInstanceObject(nodeSelector string, protocolType string, updated bool) *v1alpha2.Device {
+	var deviceInstance v1alpha2.Device
 	if !updated {
 		switch protocolType {
 		case BlueTooth:
@@ -645,6 +648,8 @@ func newDeviceInstanceObject(nodeSelector string, protocolType string, updated b
 			deviceInstance = NewModbusDeviceInstance(nodeSelector)
 		case Led:
 			deviceInstance = NewLedDeviceInstance(nodeSelector)
+		case Customized:
+			deviceInstance = NewCustomizedDeviceInstance(nodeSelector)
 		case IncorrectInstance:
 			deviceInstance = IncorrectDeviceInstance()
 		}
@@ -664,8 +669,8 @@ func newDeviceInstanceObject(nodeSelector string, protocolType string, updated b
 }
 
 // newDeviceModelObject creates a new device model object
-func newDeviceModelObject(protocolType string, updated bool) *v1alpha1.DeviceModel {
-	var deviceModel v1alpha1.DeviceModel
+func newDeviceModelObject(protocolType string, updated bool) *v1alpha2.DeviceModel {
+	var deviceModel v1alpha2.DeviceModel
 	if !updated {
 		switch protocolType {
 		case BlueTooth:
@@ -674,6 +679,8 @@ func newDeviceModelObject(protocolType string, updated bool) *v1alpha1.DeviceMod
 			deviceModel = NewModbusDeviceModel()
 		case Led:
 			deviceModel = NewLedDeviceModel()
+		case Customized:
+			deviceModel = NewCustomizedDeviceModel()
 		case "incorrect-model":
 			deviceModel = IncorrectDeviceModel()
 		}
@@ -693,7 +700,7 @@ func newDeviceModelObject(protocolType string, updated bool) *v1alpha1.DeviceMod
 }
 
 // GetDeviceModel to get the deviceModel list and verify whether the contents of the device model matches with what is expected
-func GetDeviceModel(list *v1alpha1.DeviceModelList, getDeviceModelAPI string, expectedDeviceModel *v1alpha1.DeviceModel) ([]v1alpha1.DeviceModel, error) {
+func GetDeviceModel(list *v1alpha2.DeviceModelList, getDeviceModelAPI string, expectedDeviceModel *v1alpha2.DeviceModel) ([]v1alpha2.DeviceModel, error) {
 	resp, err := SendHTTPRequest(http.MethodGet, getDeviceModelAPI)
 	defer resp.Body.Close()
 	contents, err := ioutil.ReadAll(resp.Body)
@@ -726,7 +733,7 @@ func GetDeviceModel(list *v1alpha1.DeviceModelList, getDeviceModelAPI string, ex
 }
 
 // GetDevice to get the device list
-func GetDevice(list *v1alpha1.DeviceList, getDeviceAPI string, expectedDevice *v1alpha1.Device) ([]v1alpha1.Device, error) {
+func GetDevice(list *v1alpha2.DeviceList, getDeviceAPI string, expectedDevice *v1alpha2.Device) ([]v1alpha2.Device, error) {
 	resp, err := SendHTTPRequest(http.MethodGet, getDeviceAPI)
 	defer resp.Body.Close()
 	contents, err := ioutil.ReadAll(resp.Body)
@@ -856,10 +863,22 @@ func OnTwinMessageReceived(client MQTT.Client, message MQTT.Message) {
 
 // CompareConfigMaps is used to compare 2 config maps
 func CompareConfigMaps(configMap, expectedConfigMap v1.ConfigMap) bool {
+	Infof("expectedConfigMap.Data: %v", expectedConfigMap.Data)
+	Infof("configMap.Data %v", configMap.Data)
 	if !reflect.DeepEqual(expectedConfigMap.TypeMeta, configMap.TypeMeta) || expectedConfigMap.ObjectMeta.Namespace != configMap.ObjectMeta.Namespace || !reflect.DeepEqual(expectedConfigMap.Data, configMap.Data) {
 		return false
 	}
 	return true
+}
+
+// CompareConfigMaps is used to compare 2 device profile in config maps
+func CompareDeviceProfileInConfigMaps(configMap, expectedConfigMap v1.ConfigMap) bool {
+	deviceProfile := configMap.Data["deviceProfile.json"]
+	ExpectedDeviceProfile := expectedConfigMap.Data["deviceProfile.json"]
+	var deviceProfileMap, expectedDeviceProfileMap map[string]interface{}
+	_ = json.Unmarshal([]byte(deviceProfile), &deviceProfileMap)
+	_ = json.Unmarshal([]byte(ExpectedDeviceProfile), &expectedDeviceProfileMap)
+	return reflect.DeepEqual(expectedConfigMap.TypeMeta, configMap.TypeMeta)
 }
 
 // CompareTwin is used to compare 2 device Twins
@@ -874,4 +893,88 @@ func CompareTwin(deviceTwin map[string]*MsgTwin, expectedDeviceTwin map[string]*
 		}
 	}
 	return true
+}
+
+func SendMsg(url string, message []byte) (bool, int) {
+	var req *http.Request
+	var err error
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+	req, err = http.NewRequest(http.MethodPost, url, bytes.NewBuffer(message))
+	if err != nil {
+		// handle error
+		Fatalf("Frame HTTP request failed, request: %s, reason: %v", req.URL.String(), err)
+		return false, 0
+	}
+	t := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		// handle error
+		Fatalf("HTTP request is failed: %v", err)
+		return false, 0
+	}
+	Infof("%s %s %v in %v", req.Method, req.URL, resp.Status, time.Since(t))
+	return true, resp.StatusCode
+}
+
+func StartEchoServer() (string, error) {
+	r := make(chan string)
+	echo := func(response http.ResponseWriter, request *http.Request) {
+		b, _ := ioutil.ReadAll(request.Body)
+		r <- string(b)
+		if _, err := response.Write([]byte("Hello World")); err != nil {
+			Errorf("Echo server write failed. reason: %s", err.Error())
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/echo", echo)
+	server := &http.Server{Addr: "0.0.0.0:9000", Handler: mux}
+	go func() {
+		err := server.ListenAndServe()
+		Errorf("Echo server stop. reason: %s", err.Error())
+	}()
+	t := time.NewTimer(time.Second * 30)
+	select {
+	case resp := <-r:
+		err := server.Shutdown(context.TODO())
+		return resp, err
+	case <-t.C:
+		err := server.Shutdown(context.TODO())
+		close(r)
+		return "", err
+	}
+}
+
+// subscribe function subscribes  the device twin information through the MQTT broker
+func SubscribeMqtt(topic string) (string, error) {
+	r := make(chan string)
+	TokenClient = Client.Subscribe(topic, 0, func(client MQTT.Client, message MQTT.Message) {
+		r <- string(message.Payload())
+	})
+	if TokenClient.Wait() && TokenClient.Error() != nil {
+		return "", fmt.Errorf("subscribe() Error in topic %s. reason: %s", topic, TokenClient.Error().Error())
+	}
+	t := time.NewTimer(time.Second * 30)
+	select {
+	case result := <-r:
+		Infof("subscribe topic %s to get result: %s", topic, result)
+		return result, nil
+	case <-t.C:
+		close(r)
+		return "", errors.New("Wait for MQTT message time out. ")
+	}
+}
+
+func PublishMqtt(topic, message string) error {
+	TokenClient = Client.Publish(topic, 0, false, message)
+	if TokenClient.Wait() && TokenClient.Error() != nil {
+		return fmt.Errorf("client.publish() Error in topic %s. reason: %s. ", topic, TokenClient.Error().Error())
+	}
+	Infof("publish topic %s message %s", topic, message)
+	return nil
 }

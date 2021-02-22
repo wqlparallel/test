@@ -1,20 +1,19 @@
 package edgehub
 
 import (
-	"crypto/tls"
 	"sync"
 	"time"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/beehive/pkg/core"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
+	"github.com/kubeedge/kubeedge/edge/pkg/edgehub/certificate"
 	"github.com/kubeedge/kubeedge/edge/pkg/edgehub/clients"
 	"github.com/kubeedge/kubeedge/edge/pkg/edgehub/config"
 	"github.com/kubeedge/kubeedge/pkg/apis/componentconfig/edgecore/v1alpha1"
-	"github.com/kubeedge/kubeedge/pkg/util/validation"
 )
 
 //define edgehub module name
@@ -26,6 +25,7 @@ var HasTLSTunnelCerts = make(chan bool, 1)
 
 //EdgeHub defines edgehub object structure
 type EdgeHub struct {
+	certManager   certificate.CertManager
 	chClient      clients.Adapter
 	reconnectChan chan struct{}
 	syncKeeper    map[string]chan model.Message
@@ -64,23 +64,13 @@ func (eh *EdgeHub) Enable() bool {
 
 //Start sets context and starts the controller
 func (eh *EdgeHub) Start() {
-	// if there is no manual certificate setting or the setting has problems, then the edge applies for the certificate
-	if validation.FileIsExist(config.Config.TLSCAFile) && validation.FileIsExist(config.Config.TLSCertFile) && validation.FileIsExist(config.Config.TLSPrivateKeyFile) {
-		_, err := tls.LoadX509KeyPair(config.Config.TLSCertFile, config.Config.TLSPrivateKeyFile)
-		if err != nil {
-			if err := eh.applyCerts(); err != nil {
-				klog.Fatalf("Error: %v", err)
-				return
-			}
-		}
-	} else {
-		if err := eh.applyCerts(); err != nil {
-			klog.Fatalf("Error: %v", err)
-			return
-		}
-	}
+	eh.certManager = certificate.NewCertManager(config.Config.EdgeHub, config.Config.NodeName)
+	eh.certManager.Start()
+
 	HasTLSTunnelCerts <- true
 	close(HasTLSTunnelCerts)
+
+	go eh.ifRotationDone()
 
 	for {
 		select {
@@ -106,10 +96,10 @@ func (eh *EdgeHub) Start() {
 		go eh.routeToCloud()
 		go eh.keepalive()
 
-		// wait the stop singal
+		// wait the stop signal
 		// stop authinfo manager/websocket connection
 		<-eh.reconnectChan
-		eh.chClient.Uninit()
+		eh.chClient.UnInit()
 
 		// execute hook fun after disconnect
 		eh.pubConnectInfo(false)

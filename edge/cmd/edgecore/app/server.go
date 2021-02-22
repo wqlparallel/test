@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kubeedge/kubeedge/edge/pkg/edgestream"
-
 	"github.com/mitchellh/go-ps"
 	"github.com/spf13/cobra"
-	"k8s.io/apiserver/pkg/util/term"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
-	"k8s.io/klog"
+	"k8s.io/component-base/term"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/beehive/pkg/core"
+	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/kubeedge/edge/cmd/edgecore/app/options"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/dbm"
 	"github.com/kubeedge/kubeedge/edge/pkg/devicetwin"
 	"github.com/kubeedge/kubeedge/edge/pkg/edged"
 	"github.com/kubeedge/kubeedge/edge/pkg/edgehub"
+	"github.com/kubeedge/kubeedge/edge/pkg/edgestream"
 	"github.com/kubeedge/kubeedge/edge/pkg/eventbus"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager"
 	"github.com/kubeedge/kubeedge/edge/pkg/servicebus"
@@ -78,6 +78,16 @@ offering HTTP client capabilities to components of cloud to reach HTTP servers r
 				if err := environmentCheck(); err != nil {
 					klog.Fatal(fmt.Errorf("Failed to check the running environment: %v", err))
 				}
+			}
+
+			// get edge node local ip
+			if config.Modules.Edged.NodeIP == "" {
+				hostnameOverride, err := os.Hostname()
+				if err != nil {
+					hostnameOverride = constants.DefaultHostnameOverride
+				}
+				localIP, _ := util.GetLocalIP(hostnameOverride)
+				config.Modules.Edged.NodeIP = localIP
 			}
 
 			registerModules(config)
@@ -156,6 +166,6 @@ func registerModules(c *v1alpha1.EdgeCoreConfig) {
 	servicebus.Register(c.Modules.ServiceBus)
 	edgestream.Register(c.Modules.EdgeStream, c.Modules.Edged.HostnameOverride, c.Modules.Edged.NodeIP)
 	test.Register(c.Modules.DBTest)
-	// Nodte: Need to put it to the end, and wait for all models to register before executing
+	// Note: Need to put it to the end, and wait for all models to register before executing
 	dbm.InitDBConfig(c.DataBase.DriverName, c.DataBase.AliasName, c.DataBase.DataSource)
 }

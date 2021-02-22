@@ -21,17 +21,17 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/emicklei/go-restful"
 	"github.com/gorilla/websocket"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	hubconfig "github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/config"
-	"github.com/kubeedge/kubeedge/cloud/pkg/cloudstream/config"
+	streamconfig "github.com/kubeedge/kubeedge/cloud/pkg/cloudstream/config"
 	"github.com/kubeedge/kubeedge/pkg/stream"
 )
 
@@ -39,7 +39,8 @@ type TunnelServer struct {
 	container *restful.Container
 	upgrader  websocket.Upgrader
 	sync.Mutex
-	sessions map[string]*Session
+	sessions   map[string]*Session
+	nodeNameIP sync.Map
 }
 
 func newTunnelServer() *TunnelServer {
@@ -51,7 +52,8 @@ func newTunnelServer() *TunnelServer {
 			ReadBufferSize:   1024,
 			Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {
 				w.WriteHeader(status)
-				w.Write([]byte(reason.Error()))
+				_, err := w.Write([]byte(reason.Error()))
+				klog.Errorf("failed to write http response, err: %v", err)
 			},
 		},
 	}
@@ -78,9 +80,24 @@ func (s *TunnelServer) getSession(id string) (*Session, bool) {
 	return sess, ok
 }
 
+func (s *TunnelServer) addNodeIP(node, ip string) {
+	s.nodeNameIP.Store(node, ip)
+}
+
+func (s *TunnelServer) getNodeIP(node string) (string, bool) {
+	ip, ok := s.nodeNameIP.Load(node)
+	if !ok {
+		return "", ok
+	}
+	return ip.(string), ok
+}
+
 func (s *TunnelServer) connect(r *restful.Request, w *restful.Response) {
 	hostNameOverride := r.HeaderParameter(stream.SessionKeyHostNameOveride)
 	interalIP := r.HeaderParameter(stream.SessionKeyInternalIP)
+	if interalIP == "" {
+		interalIP = strings.Split(r.Request.RemoteAddr, ":")[0]
+	}
 	con, err := s.upgrader.Upgrade(w, r.Request, nil)
 	if err != nil {
 		return
@@ -90,43 +107,51 @@ func (s *TunnelServer) connect(r *restful.Request, w *restful.Response) {
 	session := &Session{
 		tunnel:        stream.NewDefaultTunnel(con),
 		apiServerConn: make(map[uint64]APIServerConnection),
-		apiConnlock:   &sync.Mutex{},
+		apiConnlock:   &sync.RWMutex{},
 		sessionID:     hostNameOverride,
 	}
 
 	s.addSession(hostNameOverride, session)
 	s.addSession(interalIP, session)
+	s.addNodeIP(hostNameOverride, interalIP)
 	session.Serve()
 }
 
 func (s *TunnelServer) Start() {
 	s.installDefaultHandler()
-	data, err := ioutil.ReadFile(config.Config.TLSTunnelCAFile)
-	if err != nil {
+	var data []byte
+	var key []byte
+	var cert []byte
+
+	if streamconfig.Config.Ca != nil {
+		data = streamconfig.Config.Ca
+		klog.Info("Succeed in loading TunnelCA from local directory")
+	} else {
 		data = hubconfig.Config.Ca
-		klog.Info("Succeeded in loading TLSTunnelCAFile from the secret")
+		klog.Info("Succeed in loading TunnelCA from CloudHub")
 	}
+
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: data}))
 
-	cert, err := ioutil.ReadFile(config.Config.TLSTunnelCertFile)
-	if err != nil {
+	if streamconfig.Config.Key != nil && streamconfig.Config.Cert != nil {
+		cert = streamconfig.Config.Cert
+		key = streamconfig.Config.Key
+		klog.Info("Succeed in loading TunnelCert and Key from local directory")
+	} else {
 		cert = hubconfig.Config.Cert
-		klog.Info("Succeeded in loading TLSTunnelCertFile from the secret")
-	}
-	key, err := ioutil.ReadFile(config.Config.TLSTunnelPrivateKeyFile)
-	if err != nil {
 		key = hubconfig.Config.Key
-		klog.Info("Succeeded in loading TLSTunnelPrivateKeyFile from the secret")
+		klog.Info("Succeed in loading TunnelCert and Key from CloudHub")
 	}
+
 	certificate, err := tls.X509KeyPair(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}))
 	if err != nil {
+		klog.Error("Failed to load TLSTunnelCert and Key")
 		panic(err)
 	}
-	klog.Info("Succeeded in loading TLSTunnelCert and Key")
 
 	tunnelServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", config.Config.TunnelPort),
+		Addr:    fmt.Sprintf(":%d", streamconfig.Config.TunnelPort),
 		Handler: s.container,
 		TLSConfig: &tls.Config{
 			ClientCAs:    pool,

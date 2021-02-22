@@ -36,7 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
 	utilstrings "k8s.io/utils/strings"
@@ -399,7 +399,7 @@ func (c *csiMountMgr) applyFSGroup(fsType string, fsGroup *int64) error {
 			return nil
 		}
 
-		err := volume.SetVolumeOwnership(c, fsGroup)
+		err := volume.SetVolumeOwnership(c, fsGroup, api.PodSecurityContext{}.FSGroupChangePolicy)
 		if err != nil {
 			return err
 		}

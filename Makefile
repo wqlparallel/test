@@ -1,3 +1,9 @@
+DESTDIR?=
+USR_DIR?=/usr/local
+INSTALL_DIR?=${DESTDIR}${USR_DIR}
+INSTALL_BIN_DIR?=${INSTALL_DIR}/bin
+GOPATH?=$(shell go env GOPATH)
+
 # make all builds both cloud and edge binaries
 
 BINARIES=cloudcore \
@@ -10,7 +16,7 @@ COMPONENTS=cloud \
 	edge
 
 .EXPORT_ALL_VARIABLES:
-OUT_DIR ?= _output
+OUT_DIR ?= _output/local
 
 define ALL_HELP_INFO
 # Build code.
@@ -25,6 +31,12 @@ define ALL_HELP_INFO
 #   make all
 #   make all HELP=y
 #   make all WHAT=cloudcore
+#   make all WHAT=cloudcore GOLDFLAGS="" GOGCFLAGS="-N -l"
+#     Note: Specify GOLDFLAGS as an empty string for building unstripped binaries, specify GOGCFLAGS
+#     to "-N -l" to disable optimizations and inlining, this will be helpful when you want to
+#     use the debugging tools like delve. When GOLDFLAGS is unspecified, it defaults to "-s -w" which strips
+#     debug information, see https://golang.org/cmd/link for other flags.
+
 endef
 .PHONY: all
 ifeq ($(HELP),y)
@@ -32,7 +44,7 @@ all: clean
 	@echo "$$ALL_HELP_INFO"
 else
 all: verify-golang
-	hack/make-rules/build.sh $(WHAT)
+	KUBEEDGE_OUTPUT_SUBPATH=$(OUT_DIR) hack/make-rules/build.sh $(WHAT)
 endif
 
 
@@ -52,17 +64,17 @@ endif
 
 .PHONY: verify-golang
 verify-golang:
-	bash hack/verify-golang.sh
+	hack/verify-golang.sh
 
 .PHONY: verify-vendor
 verify-vendor:
-	bash hack/verify-vendor.sh
+	hack/verify-vendor.sh
 .PHONY: verify-codegen
 verify-codegen:
-	bash cloud/hack/verify-codegen.sh
+	cloud/hack/verify-codegen.sh
 .PHONY: verify-vendor-licenses
 verify-vendor-licenses:
-	bash hack/verify-vendor-licenses.sh
+	hack/verify-vendor-licenses.sh
 
 define TEST_HELP_INFO
 # run golang test case.
@@ -70,16 +82,21 @@ define TEST_HELP_INFO
 # Args:
 #   WHAT: Component names to be testd. support: $(COMPONENTS)
 #         If not specified, "everything" will be tested.
+#   PROFILE: Generate profile named as "coverage.out"
 #
 # Example:
 #   make test
 #   make test HELP=y
+#   make test PROFILE=y
 #   make test WHAT=cloud
 endef
 .PHONY: test
 ifeq ($(HELP),y)
 test:
 	@echo "$$TEST_HELP_INFO"
+else ifeq ($(PROFILE),y)
+test: clean
+	PROFILE=coverage.out hack/make-rules/test.sh $(WHAT)
 else
 test: clean
 	hack/make-rules/test.sh $(WHAT)
@@ -202,7 +219,7 @@ else
 e2e:
 #	bash tests/e2e/scripts/execute.sh device_crd
 #	This has been commented temporarily since there is an issue of CI using same master for all PRs, which is causing failures when run parallelly
-	bash tests/e2e/scripts/execute.sh
+	tests/e2e/scripts/execute.sh
 endif
 
 define KEADM_E2E_HELP_INFO
@@ -219,7 +236,7 @@ keadm_e2e:
 	@echo "KEADM_E2E_HELP_INFO"
 else
 keadm_e2e:
-	bash tests/e2e/scripts/keadm_e2e.sh
+	tests/e2e/scripts/keadm_e2e.sh
 endif
 
 define CLEAN_HELP_INFO
@@ -265,7 +282,7 @@ edgeimage:
 	tar -xzf ./build/edge/tmp/qemu-${QEMU_ARCH}-static.tar.gz -C ./build/edge/tmp
 	docker build -t kubeedge/edgecore:${IMAGE_TAG} \
 	--build-arg GO_LDFLAGS=${GO_LDFLAGS} \
-	--build-arg BUILD_FROM=${ARCH}/golang:1.13.8-alpine3.10 \
+	--build-arg BUILD_FROM=${ARCH}/golang:1.14-alpine3.11 \
 	--build-arg RUN_FROM=${ARCH}/docker:dind \
 	-f build/edge/Dockerfile .
 
@@ -277,14 +294,54 @@ edgesiteimage:
 	tar -xzf ./build/edgesite/tmp/qemu-${QEMU_ARCH}-static.tar.gz -C ./build/edgesite/tmp
 	docker build -t kubeedge/edgesite:${IMAGE_TAG} \
 	--build-arg GO_LDFLAGS=${GO_LDFLAGS} \
-	--build-arg BUILD_FROM=${ARCH}/golang:1.13.8-alpine3.10 \
+	--build-arg BUILD_FROM=${ARCH}/golang:1.14-alpine3.11 \
 	--build-arg RUN_FROM=${ARCH}/docker:dind \
 	-f build/edgesite/Dockerfile .
 
+# Mappers
 .PHONY: bluetoothdevice
 bluetoothdevice: clean
 	hack/make-rules/bluetoothdevice.sh
-
 .PHONY: bluetoothdevice_image
 bluetoothdevice_image:bluetoothdevice
-	docker build -t bluetooth_mapper:v1.0 ./mappers/bluetooth_mapper/
+	sudo docker build -t bluetooth_mapper:v1.0 ./mappers/bluetooth_mapper/
+
+.PHONY: modbusmapper
+modbusmapper: clean
+	hack/make-rules/modbusmapper.sh
+.PHONY: modbusmapper_image
+modbusmapper_image:modbusmapper
+	sudo docker build -t modbusmapper:v1.0 ./mappers/modbus-go
+
+.PHONY: mappers
+mappers:bluetoothdevice modbusmapper
+
+
+define INSTALL_HELP_INFO
+# install
+#
+# Args:
+#   WHAT: Component names to be installed to $${INSTALL_BIN_DIR} (${INSTALL_BIN_DIR})
+#         If not specified, "everything" will be installed
+#
+##
+# Example:
+#   make install
+#   make install WHAT=edgecore
+#
+endef
+.PHONY: help
+ifeq ($(HELP),y)
+install:
+	@echo "$$INSTALL_HELP_INFO"
+else
+install: _output/local/bin
+	install -d "${INSTALL_BIN_DIR}"
+	if [ "" != "${WHAT}" ]; then \
+          install "$</${WHAT}"  "${INSTALL_BIN_DIR}" ;\
+        else \
+          for file in ${BINARIES} ; do \
+            install "$</$${file}"  "${INSTALL_BIN_DIR}" ;\
+          done ; \
+        fi
+endif

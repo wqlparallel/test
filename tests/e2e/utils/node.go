@@ -30,7 +30,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/onsi/gomega"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 func getpwd() string {
@@ -228,9 +228,9 @@ func TaintEdgeDeployedNode(toTaint bool, taintHandler string) error {
 	var temp map[string]interface{}
 	var body string
 	if toTaint {
-		body = fmt.Sprintf(`{"spec":{"taints":[{"effect":"NoSchedule","key":"key","value":"value"}]}}`)
+		body = `{"spec":{"taints":[{"effect":"NoSchedule","key":"key","value":"value"}]}}`
 	} else {
-		body = fmt.Sprintf(`{"spec":{"taints":null}}`)
+		body = `{"spec":{"taints":null}}`
 	}
 	err := json.Unmarshal([]byte(body), &temp)
 	if err != nil {

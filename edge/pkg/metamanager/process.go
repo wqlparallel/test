@@ -6,18 +6,20 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/klog"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/beehive/pkg/common/util"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
+	cloudmodules "github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/common/constants"
 	connect "github.com/kubeedge/kubeedge/edge/pkg/common/cloudconnection"
 	messagepkg "github.com/kubeedge/kubeedge/edge/pkg/common/message"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	metaManagerConfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/config"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/dao"
+	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/kubernetes/storage/sqlite/imitator"
 )
 
 //Constants to check metamanager processes
@@ -138,6 +140,7 @@ func (m *metaManager) processInsert(message model.Message) {
 			return
 		}
 	}
+	imitator.DefaultV2Client.Inject(message)
 	resKey, resType, _ := parseResource(message.GetResource())
 	switch resType {
 	case constants.ResourceTypeServiceList:
@@ -211,6 +214,7 @@ func (m *metaManager) processUpdate(message model.Message) {
 			return
 		}
 	}
+	imitator.DefaultV2Client.Inject(message)
 
 	resKey, resType, _ := parseResource(message.GetResource())
 	if resType == constants.ResourceTypeServiceList || resType == constants.ResourceTypeEndpointsList || resType == model.ResourceTypePodlist {
@@ -319,7 +323,7 @@ func (m *metaManager) processUpdate(message model.Message) {
 		sendToCloud(&message)
 		resp := message.NewRespByMessage(&message, OK)
 		sendToEdged(resp, message.IsSync())
-	case CloudControlerModel:
+	case cloudmodules.EdgeControllerModuleName, cloudmodules.DynamicControllerModuleName:
 		if isEdgeMeshResource(resType) {
 			sendToEdgeMesh(&message, message.IsSync())
 		} else {
@@ -377,6 +381,7 @@ func (m *metaManager) processResponse(message model.Message) {
 }
 
 func (m *metaManager) processDelete(message model.Message) {
+	imitator.DefaultV2Client.Inject(message)
 	err := dao.DeleteMetaByKey(message.GetResource())
 	if err != nil {
 		klog.Errorf("delete meta failed, %s", msgDebugInfo(&message))
@@ -455,7 +460,7 @@ func (m *metaManager) processRemoteQuery(message model.Message) {
 		resp, err := beehiveContext.SendSync(
 			string(metaManagerConfig.Config.ContextSendModule),
 			message,
-			60*time.Second) // TODO: configurable
+			time.Duration(metaManagerConfig.Config.RemoteQueryTimeout)*time.Second)
 		klog.Infof("########## process get: req[%+v], resp[%+v], err[%+v]", message, resp, err)
 		if err != nil {
 			klog.Errorf("remote query failed: %v", err)
@@ -507,7 +512,7 @@ func (m *metaManager) processNodeConnection(message model.Message) {
 	}
 }
 
-func (m *metaManager) processSync(message model.Message) {
+func (m *metaManager) processSync() {
 	m.syncPodStatus()
 }
 
@@ -643,7 +648,7 @@ func (m *metaManager) process(message model.Message) {
 	case messagepkg.OperationNodeConnection:
 		m.processNodeConnection(message)
 	case OperationMetaSync:
-		m.processSync(message)
+		m.processSync()
 	case OperationFunctionAction:
 		m.processFunctionAction(message)
 	case OperationFunctionActionResult:

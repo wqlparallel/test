@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/kubeedge/cloud/pkg/client/clientset/versioned"
 	syncinformer "github.com/kubeedge/kubeedge/cloud/pkg/client/informers/externalversions/reliablesyncs/v1alpha1"
@@ -28,15 +28,14 @@ type Configure struct {
 	Checker       *kele.ReadyzAdaptor
 }
 
-func InitConfigure(hub *v1alpha1.CloudHub, kubeAPIConfig *v1alpha1.KubeAPIConfig) {
+func InitConfigure(hub *v1alpha1.CloudHub) {
 	once.Do(func() {
 		if len(hub.AdvertiseAddress) == 0 {
 			klog.Fatal("AdvertiseAddress must be specified!")
 		}
 
 		Config = Configure{
-			CloudHub:      *hub,
-			KubeAPIConfig: kubeAPIConfig,
+			CloudHub: *hub,
 		}
 
 		ca, err := ioutil.ReadFile(hub.TLSCAFile)

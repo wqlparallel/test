@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
 	"github.com/kubeedge/kubeedge/edgemesh/pkg/common"
@@ -125,7 +125,9 @@ func startDNS() {
 			klog.Warningf("[EdgeMesh] failed to resolve dns: %v", err)
 			continue
 		}
-		dnsConn.WriteTo(rsp, from)
+		if _, err = dnsConn.WriteTo(rsp, from); err != nil {
+			klog.Warningf("[EdgeMesh] failed to write: %v", err)
+		}
 	}
 }
 
@@ -330,7 +332,10 @@ func getFromRealDNS(req []byte, from *net.UDPAddr) {
 
 		if n > 0 {
 			rsp = append(rsp, buf[:n]...)
-			dnsConn.WriteToUDP(rsp, from)
+			if _, err = dnsConn.WriteToUDP(rsp, from); err != nil {
+				klog.Errorf("[EdgeMesh] failed to wirte to udp, err: %v", err)
+				continue
+			}
 			break
 		}
 	}

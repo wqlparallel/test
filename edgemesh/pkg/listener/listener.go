@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/kubeedge/beehive/pkg/core/model"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
+	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
 	"github.com/kubeedge/kubeedge/edgemesh/pkg/cache"
@@ -256,7 +256,9 @@ func realServerAddress(conn *net.Conn) (string, int, error) {
 	}
 
 	port := int(addr.data[0])<<8 + int(addr.data[1])
-	syscall.SetNonblock(int(fd), true)
+	if err := syscall.SetNonblock(int(fd), true); err != nil {
+		return "", -1, nil
+	}
 
 	return ip.String(), port, nil
 }

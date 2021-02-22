@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -19,12 +20,13 @@ A token can be used when a edge node is about to join the cluster. With this tok
 certificate request.
 `
 	gettokenExample = `
-keadm gettoken --kube-config = /root/.kube/config
+keadm gettoken --kube-config /root/.kube/config
 - kube-config is the absolute path of kubeconfig which used to build secure connectivity between keadm and kube-apiserver
 to get the token.
 `
 )
 
+// NewGettoken gets the token for edge nodes to join the cluster
 func NewGettoken(out io.Writer, init *common.GettokenOptions) *cobra.Command {
 	if init == nil {
 		init = newGettokenOptions()
@@ -65,7 +67,7 @@ func queryToken(namespace string, name string, kubeConfigPath string) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	secret, err := client.CoreV1().Secrets(namespace).Get(name, metaV1.GetOptions{})
+	secret, err := client.CoreV1().Secrets(namespace).Get(context.Background(), name, metaV1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func queryToken(namespace string, name string, kubeConfigPath string) ([]byte, e
 
 // showToken prints the token
 func showToken(data []byte, out io.Writer) error {
-	_, err := out.Write(data)
+	_, err := fmt.Fprintln(out, string(data))
 	if err != nil {
 		return err
 	}

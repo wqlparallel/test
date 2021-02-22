@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/paypal/gatt"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
-	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/action_manager"
-	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/data_converter"
+	actionmanager "github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/action_manager"
+	dataconverter "github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/data_converter"
 	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/helper"
 )
 
@@ -61,7 +61,9 @@ func (w *Watcher) Initiate(device gatt.Device, nameOfDevice, idOfDevice string, 
 		gatt.PeripheralDisconnected(onPeripheralDisconnected),
 		gatt.PeripheralDiscovered(onPeripheralDiscovered),
 	)
-	device.Init(onStateChanged)
+	if err := device.Init(onStateChanged); err != nil {
+		klog.Errorf("Init device failed with error: %v", err)
+	}
 	<-done
 	klog.Infof("Watcher Done")
 }

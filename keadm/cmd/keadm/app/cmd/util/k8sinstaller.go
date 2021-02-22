@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -85,10 +86,10 @@ func createKubeEdgeNs(kubeConfig, master string) error {
 		},
 	}
 
-	_, err = client.CoreV1().Namespaces().Get("kubeedge", metav1.GetOptions{})
+	_, err = client.CoreV1().Namespaces().Get(context.Background(), "kubeedge", metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			_, err = client.CoreV1().Namespaces().Create(ns)
+			_, err = client.CoreV1().Namespaces().Create(context.Background(), ns, metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
@@ -113,20 +114,21 @@ func installCRDs(kubeConfig, master string) error {
 
 	// Todo: need to add the crds ro release package
 	// create the dir for kubeedge crd
-	err = os.MkdirAll(KubeEdgeCrdPath+"/devices", os.ModePerm)
+	deviceCrdPath := KubeEdgeCrdPath + "/devices"
+	err = os.MkdirAll(deviceCrdPath, os.ModePerm)
 	if err != nil {
-		return fmt.Errorf("not able to create %s folder path", KubeEdgeLogPath)
+		return fmt.Errorf("not able to create %s folder path", deviceCrdPath)
 	}
-	for _, crdFile := range []string{"devices/devices_v1alpha1_device.yaml",
-		"devices/devices_v1alpha1_devicemodel.yaml"} {
+	for _, crdFile := range []string{"devices/devices_v1alpha2_device.yaml",
+		"devices/devices_v1alpha2_devicemodel.yaml"} {
 		//check it first, do not download when it exists
 		_, err := os.Lstat(KubeEdgeCrdPath + "/" + crdFile)
 		if err != nil {
 			if os.IsNotExist(err) {
 				//Download the tar from repo
-				dwnldURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/devices", KubeEdgeCRDDownloadURL, crdFile)
-				_, err := runCommandWithShell(dwnldURL)
-				if err != nil {
+				downloadURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/devices", KubeEdgeCRDDownloadURL, crdFile)
+				cmd := NewCommand(downloadURL)
+				if err := cmd.Exec(); err != nil {
 					return err
 				}
 			} else {
@@ -143,9 +145,10 @@ func installCRDs(kubeConfig, master string) error {
 
 	// Todo: need to add the crds ro release package
 	// create the dir for kubeedge crd
-	err = os.MkdirAll(KubeEdgeCrdPath+"/reliablesyncs", os.ModePerm)
+	reliablesyncCrdPath := KubeEdgeCrdPath + "/reliablesyncs"
+	err = os.MkdirAll(reliablesyncCrdPath, os.ModePerm)
 	if err != nil {
-		return fmt.Errorf("not able to create %s folder path", KubeEdgeLogPath)
+		return fmt.Errorf("not able to create %s folder path", reliablesyncCrdPath)
 	}
 	for _, crdFile := range []string{"reliablesyncs/cluster_objectsync_v1alpha1.yaml",
 		"reliablesyncs/objectsync_v1alpha1.yaml"} {
@@ -154,9 +157,9 @@ func installCRDs(kubeConfig, master string) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				//Download the tar from repo
-				dwnldURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/reliablesyncs", KubeEdgeCRDDownloadURL, crdFile)
-				_, err := runCommandWithShell(dwnldURL)
-				if err != nil {
+				downloadURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/reliablesyncs", KubeEdgeCRDDownloadURL, crdFile)
+				cmd := NewCommand(downloadURL)
+				if err := cmd.Exec(); err != nil {
 					return err
 				}
 			} else {
@@ -186,7 +189,7 @@ func createKubeEdgeCRD(clientset crdclient.Interface, crdFile string) error {
 		return fmt.Errorf("unmarshal tfjobCRD error: %v", err)
 	}
 
-	_, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(kubeEdgeCRD)
+	_, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(context.Background(), kubeEdgeCRD, metav1.CreateOptions{})
 
 	return err
 }
