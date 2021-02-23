@@ -16,8 +16,7 @@ require (
 	github.com/docker/spdystream v0.0.0-20181023171402-6480d4af844c // indirect
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/emicklei/go-restful v2.9.6+incompatible
-	github.com/evanphx/json-patch v4.5.0+incompatible // indirect
-	github.com/fsnotify/fsnotify v1.4.7
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-chassis/go-archaius v0.20.0
 	github.com/go-chassis/go-chassis v1.7.1
@@ -68,6 +67,7 @@ require (
 	k8s.io/component-base v0.19.3
 	k8s.io/cri-api v0.19.3
 	k8s.io/csi-translation-lib v0.19.3
+	k8s.io/klog v0.3.1
 	k8s.io/klog/v2 v2.2.0
 	k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6
 	k8s.io/kube-scheduler v0.19.3 // indirect
