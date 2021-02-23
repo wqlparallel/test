@@ -20,11 +20,10 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/klog/v2"
-
 	mappercommon "github.com/kubeedge/kubeedge/mappers/common"
 	"github.com/kubeedge/kubeedge/mappers/modbus-go/driver"
 	"github.com/kubeedge/kubeedge/mappers/modbus-go/globals"
+	"k8s.io/klog/v2"
 )
 
 // TwinData is the timer structure for getting twin/data.

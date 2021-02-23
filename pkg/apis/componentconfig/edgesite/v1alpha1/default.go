@@ -76,7 +76,7 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 					UpdateNode:                 constants.DefaultUpdateNodeBuffer,
 					DeletePod:                  constants.DefaultDeletePodBuffer,
 				},
-				Context: &cloudcoreconfig.ControllerContext{
+				Context: &cloudcoreconfig.EdgeControllerContext{
 					SendModule:     metaconfig.ModuleNameMetaManager,
 					ReceiveModule:  metaconfig.ModuleNameEdgeController,
 					ResponseModule: metaconfig.ModuleNameMetaManager,
@@ -112,7 +112,6 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 				RuntimeRequestTimeout:       constants.DefaultRuntimeRequestTimeout,
 				HostnameOverride:            hostnameOverride,
 				RegisterNode:                true,
-				ConcurrentConsumers:         constants.DefaultConcurrentConsumers,
 				RegisterNodeNamespace:       constants.DefaultRegisterNodeNamespace,
 				DevicePluginEnabled:         false,
 				GPUPluginEnabled:            false,
@@ -126,7 +125,6 @@ func NewDefaultEdgeSiteConfig() *EdgeSiteConfig {
 				ContextSendGroup:      metaconfig.GroupNameEdgeController,
 				ContextSendModule:     metaconfig.ModuleNameEdgeController,
 				PodStatusSyncInterval: constants.DefaultPodStatusSyncInterval,
-				RemoteQueryTimeout:    constants.DefaultRemoteQueryTimeout,
 			},
 		},
 	}

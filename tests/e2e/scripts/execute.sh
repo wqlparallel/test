@@ -27,11 +27,9 @@ which ginkgo &> /dev/null || (
     sudo cp $GOPATH/bin/ginkgo /usr/local/bin/
 )
 
-cleanup() {
-    bash ${curpath}/tests/e2e/scripts/cleanup.sh
-}
-
-cleanup
+bash ${curpath}/tests/e2e/scripts/cleanup.sh deployment
+bash ${curpath}/tests/e2e/scripts/cleanup.sh edgesite
+bash ${curpath}/tests/e2e/scripts/cleanup.sh device_crd
 
 E2E_DIR=${curpath}/tests/e2e
 sudo rm -rf ${E2E_DIR}/deployment/deployment.test
@@ -61,8 +59,6 @@ echo "Number of Test cases PASSED = $passed"
 fail=`grep -e "SUCCESS\!" -e "FAIL\!" /tmp/testcase.log | awk '{print $6}' | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" | awk '{sum+=$1} END {print sum}'`
 echo "Number of Test cases FAILED = $fail"
 echo "==================Result Summary======================="
-
-trap cleanup EXIT
 
 if [ "$fail" != "0" ];then
     echo "Integration suite has failures, Please check !!"

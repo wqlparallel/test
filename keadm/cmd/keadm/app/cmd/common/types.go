@@ -62,8 +62,8 @@ type CheckObject struct {
 	Cmd  string
 }
 
-// CollectOptions has the kubeedge debug collect information filled by CLI
-type CollectOptions struct {
+// ColletcOptions has the kubeedge debug colletc information filled by CLI
+type ColletcOptions struct {
 	Config     string
 	OutputPath string
 	Detail     bool
@@ -72,7 +72,6 @@ type CollectOptions struct {
 
 type ResetOptions struct {
 	Kubeconfig string
-	Force      bool
 }
 
 type GettokenOptions struct {

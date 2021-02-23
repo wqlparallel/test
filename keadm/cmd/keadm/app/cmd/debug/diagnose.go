@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/spf13/cobra"
-	v1 "k8s.io/api/core/v1"
-
-	"github.com/kubeedge/kubeedge/common/types"
+	kubeedgeTypes "github.com/kubeedge/kubeedge/common/types"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/dao"
 	"github.com/kubeedge/kubeedge/keadm/cmd/keadm/app/cmd/common"
+	constant "github.com/kubeedge/kubeedge/keadm/cmd/keadm/app/cmd/common"
+	types "github.com/kubeedge/kubeedge/keadm/cmd/keadm/app/cmd/common"
 	"github.com/kubeedge/kubeedge/keadm/cmd/keadm/app/cmd/util"
 	"github.com/kubeedge/kubeedge/pkg/apis/componentconfig/edgecore/v1alpha1"
+	edgecoreCfg "github.com/kubeedge/kubeedge/pkg/apis/componentconfig/edgecore/v1alpha1"
+	"github.com/spf13/cobra"
+	v1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -35,17 +37,17 @@ keadm debug diagnose install -i 192.168.1.2
 `
 )
 
-type Diagnose common.DiagnoseObject
+type Diagnose types.DiagnoseObject
 
 // NewDiagnose returns KubeEdge edge debug Diagnose command.
-func NewDiagnose(out io.Writer, diagnoseOptions *common.DiagnoseOptions) *cobra.Command {
+func NewDiagnose(out io.Writer, diagnoseOptions *types.DiagnoseOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "diagnose",
 		Short:   edgeDiagnoseShortDescription,
 		Long:    edgeDiagnoseLongDescription,
 		Example: edgeDiagnoseExample,
 	}
-	for _, v := range common.DiagnoseObjectMap {
+	for _, v := range constant.DiagnoseObjectMap {
 		cmd.AddCommand(NewSubDiagnose(out, Diagnose(v)))
 	}
 	return cmd
@@ -61,12 +63,12 @@ func NewSubDiagnose(out io.Writer, object Diagnose) *cobra.Command {
 		},
 	}
 	switch object.Use {
-	case common.ArgDiagnoseNode:
-		cmd.Flags().StringVarP(&do.Config, common.EdgecoreConfig, "c", do.Config,
+	case constant.ArgDiagnoseNode:
+		cmd.Flags().StringVarP(&do.Config, constant.EdgecoreConfig, "c", do.Config,
 			fmt.Sprintf("Specify configuration file, defalut is %s", common.EdgecoreConfigPath))
-	case common.ArgDiagnosePod:
+	case constant.ArgDiagnosePod:
 		cmd.Flags().StringVarP(&do.Namespace, "namespace", "n", do.Namespace, "specify namespace")
-	case common.ArgDiagnoseInstall:
+	case constant.ArgDiagnoseInstall:
 		cmd.Flags().StringVarP(&do.CheckOptions.DNSIP, "dns-ip", "D", do.CheckOptions.DNSIP, "specify test dns server ip")
 		cmd.Flags().StringVarP(&do.CheckOptions.Domain, "domain", "d", do.CheckOptions.Domain, "specify test domain")
 		cmd.Flags().StringVarP(&do.CheckOptions.IP, "ip", "i", do.CheckOptions.IP, "specify test ip")
@@ -77,24 +79,24 @@ func NewSubDiagnose(out io.Writer, object Diagnose) *cobra.Command {
 }
 
 // Add flags
-func NewDiagnoseOptins() *common.DiagnoseOptions {
-	do := &common.DiagnoseOptions{}
+func NewDiagnoseOptins() *types.DiagnoseOptions {
+	do := &types.DiagnoseOptions{}
 	do.Namespace = "default"
-	do.Config = common.EdgecoreConfigPath
-	do.CheckOptions = &common.CheckOptions{
+	do.Config = types.EdgecoreConfigPath
+	do.CheckOptions = &types.CheckOptions{
 		IP:      "",
 		Timeout: 3,
-		Runtime: common.DefaultRuntime,
+		Runtime: types.DefaultRuntime,
 	}
 	return do
 }
 
-func (da Diagnose) ExecuteDiagnose(use string, ops *common.DiagnoseOptions, args []string) {
+func (da Diagnose) ExecuteDiagnose(use string, ops *types.DiagnoseOptions, args []string) {
 	err := fmt.Errorf("")
 	switch use {
-	case common.ArgDiagnoseNode:
+	case constant.ArgDiagnoseNode:
 		err = DiagnoseNode(ops)
-	case common.ArgDiagnosePod:
+	case constant.ArgDiagnosePod:
 		if len(args) == 0 {
 			fmt.Println("error: You must specify a pod name")
 			return
@@ -104,19 +106,19 @@ func (da Diagnose) ExecuteDiagnose(use string, ops *common.DiagnoseOptions, args
 		if err == nil {
 			err = DiagnosePod(ops, args[0])
 		}
-	case common.ArgDiagnoseInstall:
+	case constant.ArgDiagnoseInstall:
 		err = DiagnoseInstall(ops.CheckOptions)
 	}
 
 	if err != nil {
 		fmt.Println(err.Error())
-		util.PrintFail(use, common.StrDiagnose)
+		util.PrintFail(use, constant.StrDiagnose)
 	} else {
-		util.PrintSucceed(use, common.StrDiagnose)
+		util.PrintSuccedd(use, constant.StrDiagnose)
 	}
 }
 
-func DiagnoseNode(ops *common.DiagnoseOptions) error {
+func DiagnoseNode(ops *types.DiagnoseOptions) error {
 	osType := util.GetOSInterface()
 	isEdgeRuning, err := osType.IsKubeEdgeProcessRunning(util.KubeEdgeBinaryName)
 	if err != nil {
@@ -171,16 +173,16 @@ func DiagnoseNode(ops *common.DiagnoseOptions) error {
 	return nil
 }
 
-func DiagnosePod(ops *common.DiagnoseOptions, podName string) error {
+func DiagnosePod(ops *types.DiagnoseOptions, podName string) error {
 	ready := false
 	if ops.DBPath == "" {
-		ops.DBPath = v1alpha1.DataBaseDataSource
+		ops.DBPath = edgecoreCfg.DataBaseDataSource
 	}
-	err := InitDB(v1alpha1.DataBaseDriverName, v1alpha1.DataBaseAliasName, ops.DBPath)
+	err := InitDB(edgecoreCfg.DataBaseDriverName, edgecoreCfg.DataBaseAliasName, ops.DBPath)
 	if err != nil {
 		return fmt.Errorf("Failed to initialize database: %v ", err)
 	}
-	fmt.Printf("Database %s is exist \n", v1alpha1.DataBaseDataSource)
+	fmt.Printf("Database %s is exist \n", edgecoreCfg.DataBaseDataSource)
 	podStatus, err := QueryPodFromDatabase(ops.Namespace, podName)
 	if err != nil {
 		return err
@@ -262,7 +264,7 @@ func QueryPodFromDatabase(resNamePaces string, podName string) (*v1.PodStatus, e
 	fmt.Printf("PodStatus %s is exist \n", podName)
 
 	r := *resultStatus
-	podStatus := &types.PodStatusRequest{}
+	podStatus := &kubeedgeTypes.PodStatusRequest{}
 	err = json.Unmarshal([]byte(r[0]), podStatus)
 	if err != nil {
 		return &podStatus.Status, err
@@ -270,7 +272,7 @@ func QueryPodFromDatabase(resNamePaces string, podName string) (*v1.PodStatus, e
 	return &podStatus.Status, nil
 }
 
-func DiagnoseInstall(ob *common.CheckOptions) error {
+func DiagnoseInstall(ob *types.CheckOptions) error {
 	err := CheckCPU()
 	if err != nil {
 		return err

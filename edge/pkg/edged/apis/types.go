@@ -75,6 +75,7 @@ type ContainerStatus struct {
 var (
 	ErrPodNotFound       = errors.New("PodNotFound")
 	ErrContainerNotFound = errors.New("ContainerNotFound")
+	ErrPodStartBackOff   = errors.New("PodStartBackOff")
 )
 
 // RuntimeService is docker runtime service
@@ -88,3 +89,9 @@ type RuntimeService interface {
 	ContainerStatus(containerID string) (*ContainerStatus, error)
 	InspectContainer(containerID string) (*ContainerInspect, error)
 }
+
+// constants for defining prefix in docker
+const (
+	DockerPrefix         = "docker://"
+	DockerPullablePrefix = "docker-pullable://"
+)

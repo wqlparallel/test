@@ -1,14 +1,13 @@
 package model
 
 import (
-
 	// Mapping value of json to struct member
 	_ "encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/kubeedge/beehive/pkg/core/model"
-	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
+	beehiveModel "github.com/kubeedge/beehive/pkg/core/model"
 	edgemessagelayer "github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/messagelayer"
 )
 
@@ -56,14 +55,6 @@ const (
 	NodeID    = "node_id"
 )
 
-var cloudModuleArray = []string{
-	modules.CloudHubModuleName,
-	modules.CloudStreamModuleName,
-	modules.DeviceControllerModuleName,
-	modules.EdgeControllerModuleName,
-	modules.SyncControllerModuleName,
-}
-
 // HubInfo saves identifier information for edge hub
 type HubInfo struct {
 	ProjectID string
@@ -85,7 +76,7 @@ func NewResource(resType, resID string, info *HubInfo) string {
 // IsNodeStopped indicates if the node is stopped or running
 func IsNodeStopped(msg *model.Message) bool {
 	resourceType, _ := edgemessagelayer.GetResourceType(*msg)
-	if resourceType != model.ResourceTypeNode {
+	if resourceType != beehiveModel.ResourceTypeNode {
 		return false
 	}
 
@@ -97,12 +88,6 @@ func IsNodeStopped(msg *model.Message) bool {
 
 // IsFromEdge judges if the event is sent from edge
 func IsFromEdge(msg *model.Message) bool {
-	source := msg.Router.Source
-	for _, item := range cloudModuleArray {
-		if source == item {
-			return false
-		}
-	}
 	return true
 }
 

@@ -15,15 +15,13 @@ const (
 	ResponseOperation      = "response"
 	ResponseErrorOperation = "error"
 
-	ResourceTypePod          = "pod"
-	ResourceTypeConfigmap    = "configmap"
-	ResourceTypeSecret       = "secret"
-	ResourceTypeNode         = "node"
-	ResourceTypePodlist      = "podlist"
-	ResourceTypePodStatus    = "podstatus"
-	ResourceTypeNodeStatus   = "nodestatus"
-	ResourceTypeRule         = "rule"
-	ResourceTypeRuleEndpoint = "ruleendpoint"
+	ResourceTypePod        = "pod"
+	ResourceTypeConfigmap  = "configmap"
+	ResourceTypeSecret     = "secret"
+	ResourceTypeNode       = "node"
+	ResourceTypePodlist    = "podlist"
+	ResourceTypePodStatus  = "podstatus"
+	ResourceTypeNodeStatus = "nodestatus"
 )
 
 // Message struct
@@ -37,7 +35,7 @@ type Message struct {
 type MessageRoute struct {
 	// where the message come from
 	Source string `json:"source,omitempty"`
-	// where the message will broadcast to
+	// where the message will broadcasted to
 	Group string `json:"group,omitempty"`
 
 	// what's the operation on resource

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/klog/v2"
 	"os"
 	"strings"
 
@@ -29,9 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/printers"
-	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
-	k8s_v1_api "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8sprinters "k8s.io/kubernetes/pkg/printers"
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 	"k8s.io/kubernetes/pkg/printers/storage"
@@ -572,68 +571,73 @@ func ParseMetaToAPIList(metas []dao.Meta) (res []runtime.Object, err error) {
 		endPointsList api.EndpointsList
 		nodeList      api.NodeList
 	)
+	value := make(map[string]interface{})
+
 	for _, v := range metas {
+		if err := json.Unmarshal([]byte(v.Value), &value); err != nil {
+			return nil, err
+		}
+		metadata, err := json.Marshal(value["metadata"])
 		switch v.Type {
 		case model.ResourceTypePod:
-			var pod v1.Pod
-			var apiPod api.Pod
+			var pod api.Pod
+
 			if err = json.Unmarshal([]byte(v.Value), &pod); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_Pod_To_core_Pod(&pod, &apiPod, nil); err != nil {
+			if err = json.Unmarshal(metadata, &pod.ObjectMeta); err != nil {
 				return nil, err
 			}
-			podList.Items = append(podList.Items, apiPod)
+			podList.Items = append(podList.Items, pod)
 		case constants.ResourceTypeService:
-			var svc v1.Service
-			var apiSvc api.Service
+			var svc api.Service
+
+			if err != nil {
+				return nil, err
+			}
 			if err = json.Unmarshal([]byte(v.Value), &svc); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_Service_To_core_Service(&svc, &apiSvc, nil); err != nil {
+			if err = json.Unmarshal(metadata, &svc.ObjectMeta); err != nil {
 				return nil, err
 			}
-			serviceList.Items = append(serviceList.Items, apiSvc)
+			serviceList.Items = append(serviceList.Items, svc)
 		case model.ResourceTypeSecret:
-			var secret v1.Secret
-			var apiSecret api.Secret
+			var secret api.Secret
 			if err = json.Unmarshal([]byte(v.Value), &secret); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_Secret_To_core_Secret(&secret, &apiSecret, nil); err != nil {
+			if err = json.Unmarshal(metadata, &secret.ObjectMeta); err != nil {
 				return nil, err
 			}
-			secretList.Items = append(secretList.Items, apiSecret)
+			secretList.Items = append(secretList.Items, secret)
 		case model.ResourceTypeConfigmap:
-			var cm v1.ConfigMap
-			var apiCm api.ConfigMap
+			var cm api.ConfigMap
 			if err = json.Unmarshal([]byte(v.Value), &cm); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_ConfigMap_To_core_ConfigMap(&cm, &apiCm, nil); err != nil {
+			if err = json.Unmarshal(metadata, &cm.ObjectMeta); err != nil {
 				return nil, err
 			}
-			configMapList.Items = append(configMapList.Items, apiCm)
+			configMapList.Items = append(configMapList.Items, cm)
 		case constants.ResourceTypeEndpoints:
-			var ep v1.Endpoints
-			var apiEp api.Endpoints
+			var ep api.Endpoints
 			if err = json.Unmarshal([]byte(v.Value), &ep); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_Endpoints_To_core_Endpoints(&ep, &apiEp, nil); err != nil {
+			if err = json.Unmarshal(metadata, &ep.ObjectMeta); err != nil {
 				return nil, err
 			}
-			endPointsList.Items = append(endPointsList.Items, apiEp)
+			endPointsList.Items = append(endPointsList.Items, ep)
 		case model.ResourceTypeNode:
-			var no v1.Node
-			var apiNo api.Node
+			var no api.Node
 			if err = json.Unmarshal([]byte(v.Value), &no); err != nil {
 				return nil, err
 			}
-			if err := k8s_v1_api.Convert_v1_Node_To_core_Node(&no, &apiNo, nil); err != nil {
+			if err = json.Unmarshal(metadata, &no.ObjectMeta); err != nil {
 				return nil, err
 			}
-			nodeList.Items = append(nodeList.Items, apiNo)
+			nodeList.Items = append(nodeList.Items, no)
 		}
 	}
 	res = append(res, &podList, &serviceList, &secretList, &configMapList, &endPointsList, &nodeList)

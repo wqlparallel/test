@@ -6,10 +6,9 @@ package beego
 
 import (
 	sql "database/sql"
-	reflect "reflect"
-
 	orm "github.com/astaxie/beego/orm"
 	gomock "github.com/golang/mock/gomock"
+	reflect "reflect"
 )
 
 // MockRawSeter is a mock of RawSeter interface

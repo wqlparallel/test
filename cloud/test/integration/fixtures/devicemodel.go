@@ -17,9 +17,8 @@ limitations under the License.
 package fixtures
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/kubeedge/kubeedge/cloud/pkg/apis/devices/v1alpha2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type DevicePropertyOp struct {

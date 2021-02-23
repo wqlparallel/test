@@ -21,9 +21,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/gorilla/websocket"
 	"k8s.io/klog/v2"
 
+	"github.com/gorilla/websocket"
 	"github.com/kubeedge/kubeedge/pkg/stream"
 )
 
@@ -41,7 +41,7 @@ type Session struct {
 
 	// apiServerConn indicates a connection request made by multiple apiserver to one edgecore
 	apiServerConn map[uint64]APIServerConnection
-	apiConnlock   *sync.RWMutex
+	apiConnlock   *sync.Mutex
 }
 
 func (s *Session) WriteMessageToTunnel(m *stream.Message) error {
@@ -49,8 +49,6 @@ func (s *Session) WriteMessageToTunnel(m *stream.Message) error {
 }
 
 func (s *Session) Close() {
-	s.apiConnlock.Lock()
-	defer s.apiConnlock.Unlock()
 	for _, c := range s.apiServerConn {
 		c.SetEdgePeerDone()
 	}
@@ -86,8 +84,6 @@ func (s *Session) Serve() {
 }
 
 func (s *Session) ProxyTunnelMessageToApiserver(message *stream.Message) error {
-	s.apiConnlock.RLock()
-	defer s.apiConnlock.RUnlock()
 	kubeCon, ok := s.apiServerConn[message.ConnectID]
 	if !ok {
 		return fmt.Errorf("Can not find apiServer connection id %v in %v",

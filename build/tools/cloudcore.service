@@ -3,7 +3,7 @@ Description=cloudcore.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cloudcore
+ExecStart=/etc/kubeedge/cloudcore
 Restart=always
 RestartSec=10
 

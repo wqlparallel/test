@@ -96,10 +96,10 @@ func (eh *EdgeHub) Start() {
 		go eh.routeToCloud()
 		go eh.keepalive()
 
-		// wait the stop signal
+		// wait the stop singal
 		// stop authinfo manager/websocket connection
 		<-eh.reconnectChan
-		eh.chClient.UnInit()
+		eh.chClient.Uninit()
 
 		// execute hook fun after disconnect
 		eh.pubConnectInfo(false)

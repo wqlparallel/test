@@ -7,15 +7,8 @@ import (
 //constant defining node connection types
 const (
 	ResourceTypeNodeConnection = "node/connection"
+	OperationNodeConnection    = "publish"
 	SourceNodeConnection       = "edgehub"
-	OperationNodeConnection    = "connect"
-	OperationSubscribe         = "subscribe"
-	OperationUnsubscribe       = "unsubscribe"
-	OperationMessage           = "message"
-	OperationPublish           = "publish"
-	OperationGetResult         = "get_result"
-	OperationResponse          = "response"
-	OperationKeepalive         = "keepalive"
 
 	ResourceGroupName = "resource"
 	TwinGroupName     = "twin"

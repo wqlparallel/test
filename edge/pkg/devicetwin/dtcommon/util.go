@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	//MAXTWINNUM max twin key
+	MAXTWINNUM = 64
+)
+
 //ValidateValue validate value type
 func ValidateValue(valueType string, value string) error {
 	switch valueType {

@@ -2,6 +2,7 @@ package leaderelection
 
 import (
 	"context"
+	gocontext "context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/leaderelection"
@@ -24,8 +26,7 @@ import (
 
 	"github.com/kubeedge/beehive/pkg/core"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
-	"github.com/kubeedge/kubeedge/cloud/pkg/common/client"
-	"github.com/kubeedge/kubeedge/cloud/pkg/common/informers"
+	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/utils"
 	config "github.com/kubeedge/kubeedge/pkg/apis/componentconfig/cloudcore/v1alpha1"
 )
 
@@ -40,8 +41,12 @@ func Run(cfg *config.CloudCoreConfig, readyzAdaptor *ReadyzAdaptor) {
 	}
 
 	coreBroadcaster := record.NewBroadcaster()
-	cli := client.GetKubeClient()
-	if err := CreateNamespaceIfNeeded(cli, "kubeedge"); err != nil {
+	cli, err := utils.KubeClient()
+	if err != nil {
+		klog.Warningf("Create kube client for leaderElection failed with error: %s", err)
+		return
+	}
+	if err = CreateNamespaceIfNeeded(cli, "kubeedge"); err != nil {
 		klog.Warningf("Create Namespace kubeedge failed with error: %s", err)
 		return
 	}
@@ -53,10 +58,9 @@ func Run(cfg *config.CloudCoreConfig, readyzAdaptor *ReadyzAdaptor) {
 		return
 	}
 	leaderElectionConfig.Callbacks = leaderelection.LeaderCallbacks{
-		OnStartedLeading: func(ctx context.Context) {
+		OnStartedLeading: func(ctx gocontext.Context) {
 			// Start all modules,
 			core.StartModules()
-			informers.GetInformersManager().Start(beehiveContext.Done())
 			// Patch PodReadinessGate if program run in pod
 			err := TryToPatchPodReadinessGate(corev1.ConditionTrue)
 			if err != nil {
@@ -134,10 +138,13 @@ func TryToPatchPodReadinessGate(status corev1.ConditionStatus) error {
 		namespace := os.Getenv("CLOUDCORE_POD_NAMESPACE")
 		klog.Infof("CloudCore is running in pod %v/%v, try to patch PodReadinessGate", namespace, podname)
 		//TODO: use specific clients
-		client := client.GetKubeClient()
+		cli, err := utils.KubeClient()
+		if err != nil {
+			return fmt.Errorf("create kube client for patching podReadinessGate failed with error: %v", err)
+		}
 
 		//Creat patchBytes
-		getPod, err := client.CoreV1().Pods(namespace).Get(context.Background(), podname, metav1.GetOptions{})
+		getPod, err := cli.CoreV1().Pods(namespace).Get(gocontext.Background(), podname, metav1.GetOptions{})
 		originalJSON, err := json.Marshal(getPod)
 		if err != nil {
 			return fmt.Errorf("failed to marshal modified pod %q into JSON: %v", podname, err)
@@ -154,7 +161,7 @@ func TryToPatchPodReadinessGate(status corev1.ConditionStatus) error {
 		var maxRetries = 3
 		var isPatchSuccess = false
 		for i := 1; i <= maxRetries; i++ {
-			_, err = client.CoreV1().Pods(namespace).Patch(context.Background(), podname, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+			_, err = cli.CoreV1().Pods(namespace).Patch(gocontext.Background(), podname, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
 			if err == nil {
 				isPatchSuccess = true
 				klog.Infof("Successfully patching podReadinessGate: kubeedge.io/CloudCoreIsLeader to pod %q through apiserver", podname)
@@ -195,9 +202,9 @@ func TriggerGracefulShutdown() {
 	}
 }
 
-func CreateNamespaceIfNeeded(cli clientset.Interface, ns string) error {
+func CreateNamespaceIfNeeded(cli *kubernetes.Clientset, ns string) error {
 	c := cli.CoreV1()
-	if _, err := c.Namespaces().Get(context.Background(), ns, metav1.GetOptions{}); err == nil {
+	if _, err := c.Namespaces().Get(gocontext.Background(), ns, metav1.GetOptions{}); err == nil {
 		// the namespace already exists
 		return nil
 	}

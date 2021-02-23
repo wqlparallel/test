@@ -114,10 +114,9 @@ func installCRDs(kubeConfig, master string) error {
 
 	// Todo: need to add the crds ro release package
 	// create the dir for kubeedge crd
-	deviceCrdPath := KubeEdgeCrdPath + "/devices"
-	err = os.MkdirAll(deviceCrdPath, os.ModePerm)
+	err = os.MkdirAll(KubeEdgeCrdPath+"/devices", os.ModePerm)
 	if err != nil {
-		return fmt.Errorf("not able to create %s folder path", deviceCrdPath)
+		return fmt.Errorf("not able to create %s folder path", KubeEdgeLogPath)
 	}
 	for _, crdFile := range []string{"devices/devices_v1alpha2_device.yaml",
 		"devices/devices_v1alpha2_devicemodel.yaml"} {
@@ -126,9 +125,9 @@ func installCRDs(kubeConfig, master string) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				//Download the tar from repo
-				downloadURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/devices", KubeEdgeCRDDownloadURL, crdFile)
-				cmd := NewCommand(downloadURL)
-				if err := cmd.Exec(); err != nil {
+				dwnldURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/devices", KubeEdgeCRDDownloadURL, crdFile)
+				_, err := runCommandWithShell(dwnldURL)
+				if err != nil {
 					return err
 				}
 			} else {
@@ -145,10 +144,9 @@ func installCRDs(kubeConfig, master string) error {
 
 	// Todo: need to add the crds ro release package
 	// create the dir for kubeedge crd
-	reliablesyncCrdPath := KubeEdgeCrdPath + "/reliablesyncs"
-	err = os.MkdirAll(reliablesyncCrdPath, os.ModePerm)
+	err = os.MkdirAll(KubeEdgeCrdPath+"/reliablesyncs", os.ModePerm)
 	if err != nil {
-		return fmt.Errorf("not able to create %s folder path", reliablesyncCrdPath)
+		return fmt.Errorf("not able to create %s folder path", KubeEdgeLogPath)
 	}
 	for _, crdFile := range []string{"reliablesyncs/cluster_objectsync_v1alpha1.yaml",
 		"reliablesyncs/objectsync_v1alpha1.yaml"} {
@@ -157,9 +155,9 @@ func installCRDs(kubeConfig, master string) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				//Download the tar from repo
-				downloadURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/reliablesyncs", KubeEdgeCRDDownloadURL, crdFile)
-				cmd := NewCommand(downloadURL)
-				if err := cmd.Exec(); err != nil {
+				dwnldURL := fmt.Sprintf("cd %s && wget -k --no-check-certificate --progress=bar:force %s/%s", KubeEdgeCrdPath+"/reliablesyncs", KubeEdgeCRDDownloadURL, crdFile)
+				_, err := runCommandWithShell(dwnldURL)
+				if err != nil {
 					return err
 				}
 			} else {

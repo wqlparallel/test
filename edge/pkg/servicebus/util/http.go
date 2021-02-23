@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-// HTTPRequest is used structure used to unmarshal message content from cloud
+// HTTPRequest is used structure used to unmarshal message content from clous
 type HTTPRequest struct {
 	Header http.Header `json:"header"`
 	Body   []byte      `json:"body"`

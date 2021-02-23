@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"k8s.io/klog/v2"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
@@ -22,10 +21,6 @@ var (
 	ActionCallBack map[string]CallBack
 )
 
-func init() {
-	initActionCallBack()
-}
-
 //CommWorker deal app response event
 type CommWorker struct {
 	Worker
@@ -34,6 +29,7 @@ type CommWorker struct {
 
 //Start worker
 func (cw CommWorker) Start() {
+	initActionCallBack()
 	for {
 		select {
 		case msg, ok := <-cw.ReceiverChan:
@@ -127,9 +123,10 @@ func dealConfirm(context *dtcontext.DTContext, resource string, msg interface{})
 }
 
 func detailRequest(context *dtcontext.DTContext, msg interface{}) (interface{}, error) {
+	//todo eventid uuid
 	getDetail := dttype.GetDetailNode{
 		EventType: "group_membership_event",
-		EventID:   uuid.New().String(),
+		EventID:   "123",
 		Operation: "detail",
 		GroupID:   context.NodeName,
 		TimeStamp: time.Now().UnixNano() / 1000000}

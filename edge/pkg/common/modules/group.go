@@ -15,6 +15,4 @@ const (
 	UserGroup = "user"
 	// MeshGroup group
 	MeshGroup = "mesh"
-	// StreamGroup group
-	StreamGroup = "edgestream"
 )

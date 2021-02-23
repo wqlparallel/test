@@ -82,6 +82,7 @@ func (hs *HandlerStub) ProcessInsert(msg model.Message) {
 		case []byte:
 			data = msg.GetContent().([]byte)
 		default:
+			var err error
 			data, err = json.Marshal(msg.GetContent())
 			if err != nil {
 				klog.Warningf("message: %s process failure, marshal content failed with error: %s", msg.GetID(), err)

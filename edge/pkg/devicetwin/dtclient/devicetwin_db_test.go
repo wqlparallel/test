@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/astaxie/beego/orm"
+
 	"github.com/golang/mock/gomock"
 
 	"github.com/kubeedge/kubeedge/edge/mocks/beego"

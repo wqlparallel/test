@@ -19,10 +19,9 @@ WORKDIR=$(dirname $0)
 E2E_DIR=$(realpath $(dirname $0)/..)
 
 function cleanup() {
-  sudo pkill edgecore || true
-  sudo pkill cloudcore || true
+  ps aux | grep '[e]dgecore' | awk '{print $2}' | xargs -r sudo kill
+  ps aux | grep '[c]loudcore' | awk '{print $2}' | xargs -r sudo kill
   kind delete cluster --name test
-  sudo rm -rf /var/log/kubeedge /etc/kubeedge /etc/systemd/system/edgecore.service $E2E_DIR/keadm/keadm.test $E2E_DIR/config.json
 }
 
 function build_keadm() {

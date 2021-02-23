@@ -30,7 +30,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeedge/kubeedge/cloud/pkg/cloudstream/config"
-	"github.com/kubeedge/kubeedge/common/constants"
 	"github.com/kubeedge/kubeedge/pkg/stream/flushwriter"
 )
 
@@ -83,16 +82,12 @@ func (s *StreamServer) installDebugHandler() {
 		To(s.getMetrics))
 	s.container.Add(ws)
 
-	// metrics api is widely used for Prometheus
+	// metrics api is widely used for Promethus
 	ws = new(restful.WebService)
 	ws.Path("/metrics")
 	ws.Route(ws.GET("").
 		To(s.getMetrics))
 	ws.Route(ws.GET("/cadvisor").
-		To(s.getMetrics))
-	ws.Route(ws.GET("/probes").
-		To(s.getMetrics))
-	ws.Route(ws.GET("/resource").
 		To(s.getMetrics))
 	s.container.Add(ws)
 }
@@ -158,14 +153,6 @@ func (s *StreamServer) getMetrics(r *restful.Request, w *restful.Response) {
 	}()
 
 	sessionKey := strings.Split(r.Request.Host, ":")[0]
-	if forwardedURI := r.Request.Header.Get("X-Forwarded-Uri"); forwardedURI != "" {
-		if t := strings.Split(forwardedURI, "/"); strings.HasPrefix(forwardedURI, "/api/v1/nodes/") && len(t) > 6 {
-			sessionKey = t[4]
-			if ip, ok := s.tunnel.getNodeIP(sessionKey); ok {
-				r.Request.Host = fmt.Sprintf("%s:%d", ip, constants.ServerPort)
-			}
-		}
-	}
 	session, ok := s.tunnel.getSession(sessionKey)
 	if !ok {
 		err = fmt.Errorf("Can not find %v session ", sessionKey)

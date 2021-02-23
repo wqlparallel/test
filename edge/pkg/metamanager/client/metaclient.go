@@ -16,7 +16,7 @@ const (
 	syncMsgRespTimeout = 1 * time.Minute
 )
 
-//CoreInterface is interface of metaclient
+//CoreInterface is interface of mataclient
 type CoreInterface interface {
 	PodsGetter
 	PodStatusGetter

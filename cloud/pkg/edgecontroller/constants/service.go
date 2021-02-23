@@ -7,6 +7,10 @@ const (
 	ResourceResourceTypeIndex = 3
 	ResourceResourceNameIndex = 4
 
+	EdgeSiteResourceNamespaceIndex    = 0
+	EdgeSiteResourceResourceTypeIndex = 1
+	EdgeSiteResourceResourceNameIndex = 2
+
 	ResourceNode = "node"
 
 	// Group

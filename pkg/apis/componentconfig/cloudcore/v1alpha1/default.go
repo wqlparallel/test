@@ -93,8 +93,6 @@ func NewDefaultCloudCoreConfig() *CloudCoreConfig {
 					SecretEvent:                constants.DefaultSecretEventBuffer,
 					ServiceEvent:               constants.DefaultServiceEventBuffer,
 					EndpointsEvent:             constants.DefaultEndpointsEventBuffer,
-					RulesEvent:                 constants.DefaultRulesEventBuffer,
-					RuleEndpointsEvent:         constants.DefaultRuleEndpointsEventBuffer,
 					QueryPersistentVolume:      constants.DefaultQueryPersistentVolumeBuffer,
 					QueryPersistentVolumeClaim: constants.DefaultQueryPersistentVolumeClaimBuffer,
 					QueryVolumeAttachment:      constants.DefaultQueryVolumeAttachmentBuffer,
@@ -102,11 +100,10 @@ func NewDefaultCloudCoreConfig() *CloudCoreConfig {
 					UpdateNode:                 constants.DefaultUpdateNodeBuffer,
 					DeletePod:                  constants.DefaultDeletePodBuffer,
 				},
-				Context: &ControllerContext{
-					SendModule:       metaconfig.ModuleNameCloudHub,
-					SendRouterModule: metaconfig.ModuleNameRouter,
-					ReceiveModule:    metaconfig.ModuleNameEdgeController,
-					ResponseModule:   metaconfig.ModuleNameCloudHub,
+				Context: &EdgeControllerContext{
+					SendModule:     metaconfig.ModuleNameCloudHub,
+					ReceiveModule:  metaconfig.ModuleNameEdgeController,
+					ResponseModule: metaconfig.ModuleNameCloudHub,
 				},
 				Load: &EdgeControllerLoad{
 					UpdatePodStatusWorkers:            constants.DefaultUpdatePodStatusWorkers,
@@ -125,7 +122,7 @@ func NewDefaultCloudCoreConfig() *CloudCoreConfig {
 			},
 			DeviceController: &DeviceController{
 				Enable: true,
-				Context: &ControllerContext{
+				Context: &DeviceControllerContext{
 					SendModule:     metaconfig.ModuleNameCloudHub,
 					ReceiveModule:  metaconfig.ModuleNameDeviceController,
 					ResponseModule: metaconfig.ModuleNameCloudHub,
@@ -142,9 +139,6 @@ func NewDefaultCloudCoreConfig() *CloudCoreConfig {
 			SyncController: &SyncController{
 				Enable: true,
 			},
-			DynamicController: &DynamicController{
-				Enable: false,
-			},
 			CloudStream: &CloudStream{
 				Enable:                  false,
 				TLSTunnelCAFile:         constants.DefaultCAFile,
@@ -155,12 +149,6 @@ func NewDefaultCloudCoreConfig() *CloudCoreConfig {
 				TLSStreamCertFile:       constants.DefaultStreamCertFile,
 				TLSStreamPrivateKeyFile: constants.DefaultStreamKeyFile,
 				StreamPort:              10003,
-			},
-			Router: &Router{
-				Enable:      false,
-				Address:     "0.0.0.0",
-				Port:        9443,
-				RestTimeout: 60,
 			},
 		},
 		LeaderElection: &componentbaseconfig.LeaderElectionConfiguration{
@@ -211,12 +199,6 @@ func NewMinCloudCoreConfig() *CloudCoreConfig {
 					Port:    10002,
 					Address: "0.0.0.0",
 				},
-			},
-			Router: &Router{
-				Enable:      false,
-				Address:     "0.0.0.0",
-				Port:        9443,
-				RestTimeout: 60,
 			},
 		},
 		LeaderElection: &componentbaseconfig.LeaderElectionConfiguration{

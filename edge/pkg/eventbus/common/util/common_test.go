@@ -34,12 +34,6 @@ import (
 
 var clientOptions = MQTT.NewClientOptions()
 
-func init() {
-	nodeName := "testEdge"
-	cfg := v1alpha1.NewDefaultEdgeCoreConfig()
-	eventconfig.InitConfigure(cfg.Modules.EventBus, nodeName)
-}
-
 //TestCheckKeyExist checks the functionality of CheckKeyExist function
 func TestCheckKeyExist(t *testing.T) {
 	tests := []struct {
@@ -71,6 +65,9 @@ func TestCheckKeyExist(t *testing.T) {
 
 //TestCheckClientToken checks client token received
 func TestCheckClientToken(t *testing.T) {
+	nodeName := "testEdge"
+	cfg := v1alpha1.NewDefaultEdgeCoreConfig()
+	eventconfig.InitConfigure(cfg.Modules.EventBus, nodeName)
 	tests := []struct {
 		name          string
 		token         MQTT.Token

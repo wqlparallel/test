@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 )

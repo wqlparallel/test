@@ -13,10 +13,9 @@ import (
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	beehiveModel "github.com/kubeedge/beehive/pkg/core/model"
-	reliablesyncslisters "github.com/kubeedge/kubeedge/cloud/pkg/client/listers/reliablesyncs/v1alpha1"
 	"github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/common/model"
+	hubconfig "github.com/kubeedge/kubeedge/cloud/pkg/cloudhub/config"
 	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
-	"github.com/kubeedge/kubeedge/cloud/pkg/dynamiccontroller/application"
 	edgeconst "github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/constants"
 	edgemessagelayer "github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/messagelayer"
 	"github.com/kubeedge/kubeedge/cloud/pkg/synccontroller"
@@ -31,15 +30,13 @@ type ChannelMessageQueue struct {
 	listQueuePool sync.Map
 	listStorePool sync.Map
 
-	objectSyncLister        reliablesyncslisters.ObjectSyncLister
-	clusterObjectSyncLister reliablesyncslisters.ClusterObjectSyncLister
+	ObjectSyncController *hubconfig.ObjectSyncController
 }
 
 // NewChannelMessageQueue initializes a new ChannelMessageQueue
-func NewChannelMessageQueue(objectSyncLister reliablesyncslisters.ObjectSyncLister, clusterObjectSyncLister reliablesyncslisters.ClusterObjectSyncLister) *ChannelMessageQueue {
+func NewChannelMessageQueue(objectSyncController *hubconfig.ObjectSyncController) *ChannelMessageQueue {
 	return &ChannelMessageQueue{
-		objectSyncLister:        objectSyncLister,
-		clusterObjectSyncLister: clusterObjectSyncLister,
+		ObjectSyncController: objectSyncController,
 	}
 }
 
@@ -55,7 +52,6 @@ func (q *ChannelMessageQueue) DispatchMessage() {
 		default:
 		}
 		msg, err := beehiveContext.Receive(model.SrcCloudHub)
-		klog.V(4).Infof("[cloudhub] dispatchMessage to edge: %+v", msg)
 		if err != nil {
 			klog.Info("receive not Message format message")
 			continue
@@ -65,6 +61,7 @@ func (q *ChannelMessageQueue) DispatchMessage() {
 			klog.Warning("node id is not found in the message")
 			continue
 		}
+
 		if isListResource(&msg) {
 			q.addListMessageToQueue(nodeID, &msg)
 		} else {
@@ -112,7 +109,8 @@ func (q *ChannelMessageQueue) addMessageToQueue(nodeID string, msg *beehiveModel
 				klog.Errorf("fail to get message UID for message: %s", msg.Header.ID)
 				return
 			}
-			objectSync, err := q.objectSyncLister.ObjectSyncs(resourceNamespace).Get(synccontroller.BuildObjectSyncName(nodeID, resourceUID))
+
+			objectSync, err := q.ObjectSyncController.ObjectSyncLister.ObjectSyncs(resourceNamespace).Get(synccontroller.BuildObjectSyncName(nodeID, resourceUID))
 			if err == nil && objectSync.Status.ObjectResourceVersion != "" && synccontroller.CompareResourceVersion(msg.GetResourceVersion(), objectSync.Status.ObjectResourceVersion) <= 0 {
 				return
 			}
@@ -163,9 +161,6 @@ func isListResource(msg *beehiveModel.Message) bool {
 		return true
 	}
 
-	if msg.Router.Operation == application.ApplicationResp {
-		return true
-	}
 	if msg.GetOperation() == beehiveModel.ResponseOperation {
 		content, ok := msg.Content.(string)
 		if ok && content == "OK" {
@@ -178,10 +173,6 @@ func isListResource(msg *beehiveModel.Message) bool {
 		if resourceType == beehiveModel.ResourceTypeNode {
 			return true
 		}
-	}
-	// user data
-	if msg.GetGroup() == modules.UserGroup {
-		return true
 	}
 
 	return false
@@ -274,11 +265,9 @@ func (q *ChannelMessageQueue) Close(info *model.HubInfo) {
 	}
 }
 
-// Publish sends message via the channel to Controllers
+// Publish sends message via the rchannel to Controllers
 func (q *ChannelMessageQueue) Publish(msg *beehiveModel.Message) error {
 	switch msg.Router.Source {
-	case application.MetaServerSource:
-		beehiveContext.Send(modules.DynamicControllerModuleName, *msg)
 	case model.ResTwin:
 		beehiveContext.SendToGroup(model.SrcDeviceController, *msg)
 	default:

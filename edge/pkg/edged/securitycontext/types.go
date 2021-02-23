@@ -2,7 +2,7 @@ package securitycontext
 
 import (
 	"github.com/docker/docker/api/types/container"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 )
 
 //Provider is interface for security context modification

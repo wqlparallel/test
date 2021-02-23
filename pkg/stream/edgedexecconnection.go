@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
-
 	"k8s.io/apimachinery/pkg/util/httpstream/spdy"
 	"k8s.io/klog/v2"
+	"net/http"
+	"net/url"
 )
 
 type EdgedExecConnection struct {

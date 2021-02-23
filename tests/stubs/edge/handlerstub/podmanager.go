@@ -22,7 +22,7 @@ import (
 	"github.com/kubeedge/kubeedge/tests/stubs/common/types"
 )
 
-// NewPodManager creates pod manager
+// NewPodManager creates pod manger
 func NewPodManager() (*PodManager, error) {
 	pm := &PodManager{}
 	return pm, nil
