@@ -33,6 +33,7 @@ import (
 
 var DeviceConnected = make(chan bool)
 var done = make(chan struct{})
+var ConfigmapChanged = make(chan struct{})
 var deviceName string
 var deviceID string
 var actionManager []actionmanager.Action
@@ -116,6 +117,7 @@ func (w *Watcher) onPeripheralConnected(p gatt.Peripheral, err error) {
 		}
 		actionmanager.CharacteristicsList = append(actionmanager.CharacteristicsList, cs...)
 	}
+	klog.Info("DeviceConnected <- true")
 	DeviceConnected <- true
 	for {
 		newWatcher := &Watcher{}

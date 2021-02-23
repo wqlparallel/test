@@ -18,35 +18,67 @@ package main
 
 import (
 	"flag"
+	"github.com/fsnotify/fsnotify"
+	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/watcher"
 	"os"
 
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
-
+	"fmt"
 	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/configuration"
 	"github.com/kubeedge/kubeedge/mappers/bluetooth_mapper/controller"
+	"github.com/spf13/pflag"
+	"k8s.io/klog"
 )
 
 // main function
 func main() {
+	fmt.Println("Bluetooth is starting")
 	klog.InitFlags(nil)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	BleConfig := configuration.BLEConfig{}
-	// load config
-	err := BleConfig.Load()
-	if err != nil {
-		klog.Errorf("Error in loading configuration: %s", err)
-		os.Exit(1)
+	for {
+		BleConfig := configuration.BLEConfig{}
+		// load config
+		err := BleConfig.Load()
+		if err != nil {
+			klog.Errorf("Error in loading configuration: %s", err)
+			os.Exit(1)
+		}
+		fileWatcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			klog.Errorf("Error in initing file watcher: %v", err)
+			os.Exit(1)
+		}
+		//fileWatcher.Close()
+
+		err = fileWatcher.Add(configuration.ConfigMapPath)
+		if err != nil {
+			klog.Errorf("Error in adding configmap watcher: %v", err)
+			os.Exit(1)
+		}
+		go func() {
+			for {
+				select {
+				case ev := <-fileWatcher.Events:
+					{
+						klog.Info("%v, Configmap changed, begin to restart.", ev)
+						watcher.ConfigmapChanged <- struct{}{}
+						return
+					}
+				}
+			}
+		}()
+		bleController := controller.Config{
+			Watcher:       BleConfig.Watcher,
+			ActionManager: BleConfig.ActionManager,
+			Scheduler:     BleConfig.Scheduler,
+			Converter:     BleConfig.Converter,
+			Device:        BleConfig.Device,
+			Mqtt:          BleConfig.Mqtt,
+		}
+		fmt.Println("-----------", BleConfig.Device)
+		bleController.Start()
+		fmt.Println("reload configmap.")
 	}
-	bleController := controller.Config{
-		Watcher:       BleConfig.Watcher,
-		ActionManager: BleConfig.ActionManager,
-		Scheduler:     BleConfig.Scheduler,
-		Converter:     BleConfig.Converter,
-		Device:        BleConfig.Device,
-		Mqtt:          BleConfig.Mqtt,
-	}
-	bleController.Start()
+
 }

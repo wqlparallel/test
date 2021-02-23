@@ -12,4 +12,6 @@ const (
 	DefaultKubeBurst       = 10
 
 	DefaultMessageLayer = "context"
+
+	ConfigmapNamespace = "default"
 )

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -69,7 +70,7 @@ func (c *Config) Start() {
 	c.initTopicMap()
 	helper.MqttConnect(c.Mqtt.Mode, c.Mqtt.InternalServer, c.Mqtt.Server)
 	subscribeAllTopics()
-	helper.ControllerWg.Add(1)
+	//helper.ControllerWg.Add(1)
 	device, err := gatt.NewDevice(option.DefaultClientOptions...)
 	if err != nil {
 		klog.Fatalf("Failed to open device, err: %s\n", err)
@@ -77,7 +78,9 @@ func (c *Config) Start() {
 	}
 	go c.Watcher.Initiate(device, c.Device.Name, c.Device.ID, c.ActionManager.Actions, c.Converter)
 
+	fmt.Println("wait to connected")
 	<-watcher.DeviceConnected
+	fmt.Println("connected")
 	for _, action := range c.ActionManager.Actions {
 		if action.PerformImmediately {
 			action.PerformOperation(c.Converter.DataRead)
@@ -85,10 +88,12 @@ func (c *Config) Start() {
 	}
 
 	for _, schedule := range c.Scheduler.Schedules {
-		helper.ControllerWg.Add(1)
+		//helper.ControllerWg.Add(1)
 		go schedule.ExecuteSchedule(c.ActionManager.Actions, c.Converter.DataRead, c.Device.ID)
 	}
-	helper.ControllerWg.Wait()
+	//helper.ControllerWg.Wait()
+	<-watcher.ConfigmapChanged
+	klog.Info("Ending start function.")
 }
 
 //subscribeAllTopics subscribes to mqtt topics associated with mapper
@@ -140,6 +145,7 @@ func (c *Config) handleScheduleCreateMessage(client MQTT.Client, message MQTT.Me
 		}
 		configuration.Config.Scheduler = c.Scheduler
 		helper.ControllerWg.Add(1)
+		fmt.Println("c:handleScheduleCreateMessage add 1")
 		newSchedule.ExecuteSchedule(c.ActionManager.Actions, c.Converter.DataRead, c.Device.ID)
 	}
 }

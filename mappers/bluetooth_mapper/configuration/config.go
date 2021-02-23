@@ -135,7 +135,14 @@ func (b *BLEConfig) Load() error {
 		action.Name = actionConfig.Name
 		action.PerformImmediately = actionConfig.PerformImmediately
 
-		for _, propertyVisitor := range readConfigMap.PropertyVisitors {
+		propertyVisitors := []PropertyVisitor{}
+		for _, device := range readConfigMap.DeviceInstances {
+			for _, pv := range device.PropertyVisitors {
+				propertyVisitors = append(propertyVisitors, pv)
+			}
+		}
+
+		for _, propertyVisitor := range propertyVisitors {
 			if strings.EqualFold(propertyVisitor.ModelName, b.Device.Name) && strings.EqualFold(propertyVisitor.PropertyName, actionConfig.PropertyName) && strings.ToUpper(propertyVisitor.Protocol) == ProtocolName {
 				propertyVisitorBytes, err := json.Marshal(propertyVisitor.VisitorConfig)
 				if err != nil {
