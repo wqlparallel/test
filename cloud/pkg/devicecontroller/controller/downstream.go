@@ -631,7 +631,7 @@ func (dc *DownstreamController) deviceUpdated(device *v1alpha2.Device) {
 						klog.Warningf("Built message resource failed with error: %s", err)
 						return
 					}
-					msg.BuildRouter(constants.DeviceControllerModuleName, constants.GroupTwin, resource, model.UpdateOperation)
+					msg.BuildRouter(modules.DeviceControllerModuleName, constants.GroupTwin, resource, model.UpdateOperation)
 					content := types.DeviceTwinUpdate{Twin: twin}
 					content.EventID = uuid.NewV4().String()
 					content.Timestamp = time.Now().UnixNano() / 1e6
