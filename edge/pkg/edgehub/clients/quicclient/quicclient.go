@@ -83,8 +83,8 @@ func (qcc *QuicClient) Init() error {
 	return nil
 }
 
-//Uninit closes the quic connection
-func (qcc *QuicClient) Uninit() {
+//UnInit closes the quic connection
+func (qcc *QuicClient) UnInit() {
 	qcc.client.Close()
 }
 
@@ -96,8 +96,8 @@ func (qcc *QuicClient) Send(message model.Message) error {
 //Receive reads the binary message through the connection
 func (qcc *QuicClient) Receive() (model.Message, error) {
 	message := model.Message{}
-	qcc.client.ReadMessage(&message)
-	return message, nil
+	err := qcc.client.ReadMessage(&message)
+	return message, err
 }
 
 //Notify logs info

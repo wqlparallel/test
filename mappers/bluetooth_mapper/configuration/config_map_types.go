@@ -19,14 +19,8 @@ package configuration
 import (
 	"encoding/json"
 	"io/ioutil"
-)
 
-// Bluetooth Protocol Operation type
-const (
-	BluetoothAdd      string = "Add"
-	BluetoothSubtract string = "Subtract"
-	BluetoothMultiply string = "Multiply"
-	BluetoothDivide   string = "Divide"
+	"github.com/kubeedge/kubeedge/cloud/pkg/devicecontroller/types"
 )
 
 // DeviceProfile is structure to store in configMap
@@ -121,7 +115,7 @@ type BluetoothOperations struct {
 }
 
 //ReadFromConfigMap is used to load the information from the configmaps that are provided from the cloud
-func (deviceProfile *DeviceProfile) ReadFromConfigMap() error {
+func ReadFromConfigMap(deviceProfile *types.DeviceProfile) error {
 	jsonFile, err := ioutil.ReadFile(ConfigMapPath)
 	if err != nil {
 		return err

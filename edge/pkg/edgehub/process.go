@@ -41,7 +41,7 @@ func (eh *EdgeHub) addKeepChannel(msgID string) chan model.Message {
 	eh.keeperLock.Lock()
 	defer eh.keeperLock.Unlock()
 
-	tempChannel := make(chan model.Message)
+	tempChannel := make(chan model.Message, 1)
 	eh.syncKeeper[msgID] = tempChannel
 
 	return tempChannel
@@ -120,7 +120,7 @@ func (eh *EdgeHub) routeToEdge() {
 			return
 		}
 
-		klog.V(4).Infof("received msg from cloud-hub:%+v", message)
+		klog.V(4).Infof("[edgehub/routeToEdge] receive msg from cloud, msg:% +v", message)
 		err = eh.dispatch(message)
 		if err != nil {
 			klog.Errorf("failed to dispatch message, discard: %v", err)
@@ -130,6 +130,7 @@ func (eh *EdgeHub) routeToEdge() {
 
 func (eh *EdgeHub) sendToCloud(message model.Message) error {
 	eh.keeperLock.Lock()
+	klog.V(4).Infof("[edgehub/sendToCloud] send msg to cloud, msg: %+v", message)
 	err := eh.chClient.Send(message)
 	eh.keeperLock.Unlock()
 	if err != nil {
@@ -192,7 +193,7 @@ func (eh *EdgeHub) keepalive() {
 		default:
 		}
 		msg := model.NewMessage("").
-			BuildRouter(ModuleNameEdgeHub, "resource", "node", "keepalive").
+			BuildRouter(ModuleNameEdgeHub, "resource", "node", messagepkg.OperationKeepalive).
 			FillBody("ping")
 
 		// post message to cloud hub

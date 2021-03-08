@@ -13,6 +13,14 @@ const (
 	SyncControllerModuleName  = "synccontroller"
 	SyncControllerModuleGroup = "synccontroller"
 
+	DynamicControllerModuleName  = "dynamiccontroller"
+	DynamicControllerModuleGroup = "dynamiccontroller"
+
 	CloudStreamModuleName = "cloudStream"
 	CloudStreamGroupName  = "cloudStream"
+
+	RouterModuleName = "router"
+	RouterGroupName  = "router"
+
+	UserGroup = "user"
 )

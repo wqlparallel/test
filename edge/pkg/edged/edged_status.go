@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeedge/beehive/pkg/core"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/common/constants"
@@ -87,13 +88,24 @@ func (e *edged) initialNode() (*v1.Node, error) {
 		"node-role.kubernetes.io/edge":  "",
 		"node-role.kubernetes.io/agent": "",
 	}
-
-	ip, err := e.getIP()
-	if err != nil {
-		return nil, err
+	for k, v := range config.Config.Labels {
+		node.Labels[k] = v
 	}
+
+	if node.Annotations == nil {
+		node.Annotations = make(map[string]string)
+	}
+	for k, v := range config.Config.Annotations {
+		node.Annotations[k] = v
+	}
+
+	if node.Spec.Taints == nil {
+		node.Spec.Taints = make([]v1.Taint, 0)
+	}
+	node.Spec.Taints = append(node.Spec.Taints, config.Config.Taints...)
+
 	node.Status.Addresses = []v1.NodeAddress{
-		{Type: v1.NodeInternalIP, Address: ip},
+		{Type: v1.NodeInternalIP, Address: e.nodeIP.String()},
 		{Type: v1.NodeHostName, Address: hostname},
 	}
 
@@ -317,17 +329,6 @@ func (e *edged) setGPUInfo(nodeStatus *edgeapi.NodeStatusRequest) error {
 	return nil
 }
 
-func (e *edged) getIP() (string, error) {
-	if nodeIP := config.Config.NodeIP; nodeIP != "" {
-		return nodeIP, nil
-	}
-	hostName, _ := os.Hostname()
-	if hostName == "" {
-		hostName = e.nodeName
-	}
-	return util.GetLocalIP(hostName)
-}
-
 func (e *edged) setMemInfo(total, allocated v1.ResourceList) error {
 	out, err := ioutil.ReadFile("/proc/meminfo")
 	if err != nil {
@@ -388,11 +389,17 @@ func (e *edged) registerNode() error {
 
 	resource := fmt.Sprintf("%s/%s/%s", e.namespace, model.ResourceTypeNodeStatus, e.nodeName)
 	nodeInfoMsg := message.BuildMsg(modules.MetaGroup, "", modules.EdgedModuleName, resource, model.InsertOperation, node)
-	res, err := beehiveContext.SendSync(edgehub.ModuleNameEdgeHub, *nodeInfoMsg, syncMsgRespTimeout)
+	var res model.Message
+	if _, ok := core.GetModules()[edgehub.ModuleNameEdgeHub]; ok {
+		res, err = beehiveContext.SendSync(edgehub.ModuleNameEdgeHub, *nodeInfoMsg, syncMsgRespTimeout)
+	} else {
+		res, err = beehiveContext.SendSync(EdgeController, *nodeInfoMsg, syncMsgRespTimeout)
+	}
+
 	if err != nil || res.Content != "OK" {
 		klog.Errorf("register node failed, error: %v", err)
 		if res.Content != "OK" {
-			klog.Errorf("response from cloud core: %s", res.Content)
+			klog.Errorf("response from cloud core: %v", res.Content)
 		}
 		return err
 	}

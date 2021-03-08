@@ -23,6 +23,7 @@ import (
 	"path"
 	"strconv"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeedge/kubeedge/common/constants"
@@ -51,6 +52,9 @@ func NewDefaultEdgeCoreConfig() *EdgeCoreConfig {
 		Modules: &Modules{
 			Edged: &Edged{
 				Enable:                      true,
+				Labels:                      map[string]string{},
+				Annotations:                 map[string]string{},
+				Taints:                      []v1.Taint{},
 				NodeStatusUpdateFrequency:   constants.DefaultNodeStatusUpdateFrequency,
 				RuntimeType:                 constants.DefaultRuntimeType,
 				DockerAddress:               constants.DefaultDockerAddress,
@@ -131,6 +135,11 @@ func NewDefaultEdgeCoreConfig() *EdgeCoreConfig {
 				ContextSendGroup:      metaconfig.GroupNameHub,
 				ContextSendModule:     metaconfig.ModuleNameEdgeHub,
 				PodStatusSyncInterval: constants.DefaultPodStatusSyncInterval,
+				RemoteQueryTimeout:    constants.DefaultRemoteQueryTimeout,
+				MetaServer: &MetaServer{
+					Enable: false,
+					Debug:  false,
+				},
 			},
 			ServiceBus: &ServiceBus{
 				Enable: false,

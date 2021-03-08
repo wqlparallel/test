@@ -98,13 +98,17 @@ func (wsc *WebSocketClient) Init() error {
 	return errors.New("max retry count reached when connecting to cloud")
 }
 
-//Uninit closes the websocket connection
-func (wsc *WebSocketClient) Uninit() {
+//UnInit closes the websocket connection
+func (wsc *WebSocketClient) UnInit() {
 	wsc.connection.Close()
 }
 
 //Send sends the message as JSON object through the connection
 func (wsc *WebSocketClient) Send(message model.Message) error {
+	err := wsc.connection.SetWriteDeadline(time.Now().Add(wsc.config.WriteDeadline))
+	if err != nil {
+		return err
+	}
 	return wsc.connection.WriteMessageAsync(&message)
 }
 

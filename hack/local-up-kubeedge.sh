@@ -17,6 +17,7 @@
 KUBEEDGE_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 ENABLE_DAEMON=${ENABLE_DAEMON:-false}
 LOG_DIR=${LOG_DIR:-"/tmp"}
+TIMEOUT=${TIMEOUT:-60}s
 
 if [[ "${CLUSTER_NAME}x" == "x" ]];then
     CLUSTER_NAME="test"
@@ -48,7 +49,7 @@ function uninstall_kubeedge {
   rm -rf /tmp/etc/kubeedge /tmp/var/lib/kubeedge
 
   # delete iptables rule
-  sudo iptables -t nat -D PREROUTING -p tcp --dport 10350 -j REDIRECT --to-port 10003
+  sudo iptables -t nat -D PREROUTING -p tcp --dport 10350 -j REDIRECT --to-port 10003 || true
 }
 
 # clean up
@@ -79,6 +80,12 @@ function create_objectsync_crd {
   kubectl apply -f ${KUBEEDGE_ROOT}/build/crds/reliablesyncs/objectsync_v1alpha1.yaml
 }
 
+function create_rule_crd {
+  echo "creating the rule crd..."
+  kubectl apply -f ${KUBEEDGE_ROOT}/build/crds/router/router_v1_rule.yaml
+  kubectl apply -f ${KUBEEDGE_ROOT}/build/crds/router/router_v1_ruleEndpoint.yaml
+}
+
 function build_cloudcore {
   echo "building the cloudcore..."
   make -C "${KUBEEDGE_ROOT}" WHAT="cloudcore"
@@ -95,7 +102,9 @@ function start_cloudcore {
   ${CLOUD_BIN} --minconfig >  ${CLOUD_CONFIGFILE}
   sed -i '/modules:/a\  cloudStream:\n    enable: true\n    streamPort: 10003\n    tlsStreamCAFile: /etc/kubeedge/ca/streamCA.crt\n    tlsStreamCertFile: /etc/kubeedge/certs/stream.crt\n    tlsStreamPrivateKeyFile: /etc/kubeedge/certs/stream.key\n    tlsTunnelCAFile: /etc/kubeedge/ca/rootCA.crt\n    tlsTunnelCertFile: /etc/kubeedge/certs/server.crt\n    tlsTunnelPrivateKeyFile: /etc/kubeedge/certs/server.key\n    tunnelPort: 10004' ${CLOUD_CONFIGFILE}
   sed -i -e "s|kubeConfig: .*|kubeConfig: ${KUBECONFIG}|g" \
-    -e "s|/etc/|/tmp/etc/|g" ${CLOUD_CONFIGFILE}
+    -e "s|/var/lib/kubeedge/|/tmp&|g" \
+    -e "s|/etc/|/tmp/etc/|g" \
+    -e '/router:/a\    enable: true' ${CLOUD_CONFIGFILE}
   CLOUDCORE_LOG=${LOG_DIR}/cloudcore.log
   echo "start cloudcore..."
   nohup sudo ${CLOUD_BIN} --config=${CLOUD_CONFIGFILE} > "${CLOUDCORE_LOG}" 2>&1 &
@@ -121,6 +130,7 @@ function start_edgecore {
   sed -i -e "s|token: .*|token: ${token}|g" \
       -e "s|hostnameOverride: .*|hostnameOverride: edge-node|g" \
       -e "s|/etc/|/tmp/etc/|g" \
+      -e "s|/var/lib/kubeedge/|/tmp&|g" \
       -e "s|mqttMode: .*|mqttMode: 0|g" ${EDGE_CONFIGFILE}
 
   EDGECORE_LOG=${LOG_DIR}/edgecore.log
@@ -133,7 +143,7 @@ function start_edgecore {
 
 function check_control_plane_ready {
   echo "wait the control-plane ready..."
-  kubectl wait --for=condition=Ready node/test-control-plane --timeout=60s
+  kubectl wait --for=condition=Ready node/${CLUSTER_NAME}-control-plane --timeout=${TIMEOUT}
 }
 
 # Check if all processes are still running. Prints a warning once each time
@@ -207,6 +217,7 @@ kubectl create ns kubeedge
 
 create_device_crd
 create_objectsync_crd
+create_rule_crd
 
 generate_streamserver_cert
 

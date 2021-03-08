@@ -28,23 +28,25 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
-	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"sort"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sinformer "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
+	"github.com/kubeedge/kubeedge/cloud/pkg/common/client"
+	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/config"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/constants"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/messagelayer"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/types"
-	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/utils"
 	common "github.com/kubeedge/kubeedge/common/constants"
 	edgeapi "github.com/kubeedge/kubeedge/common/types"
 )
@@ -77,7 +79,7 @@ func SortInitContainerStatuses(p *v1.Pod, statuses []v1.ContainerStatus) {
 
 // UpstreamController subscribe messages from edge and sync to k8s api server
 type UpstreamController struct {
-	kubeClient   *kubernetes.Clientset
+	kubeClient   kubernetes.Interface
 	messageLayer messagelayer.MessageLayer
 
 	// message channel
@@ -93,6 +95,14 @@ type UpstreamController struct {
 	queryNodeChan             chan model.Message
 	updateNodeChan            chan model.Message
 	podDeleteChan             chan model.Message
+
+	// lister
+	podLister       corelisters.PodLister
+	configMapLister corelisters.ConfigMapLister
+	secretLister    corelisters.SecretLister
+	serviceLister   corelisters.ServiceLister
+	endpointLister  corelisters.EndpointsLister
+	nodeLister      corelisters.NodeLister
 }
 
 // Start UpstreamController
@@ -417,15 +427,13 @@ func (uc *UpstreamController) updateNodeStatus() {
 
 				// TODO: comment below for test failure. Needs to decide whether to keep post troubleshoot
 				// In case the status stored at metadata service is outdated, update the heartbeat automatically
-				if !config.Config.EdgeSiteEnable {
-					for i := range nodeStatusRequest.Status.Conditions {
-						if time.Since(nodeStatusRequest.Status.Conditions[i].LastHeartbeatTime.Time) > time.Duration(config.Config.NodeUpdateFrequency)*time.Second {
-							nodeStatusRequest.Status.Conditions[i].LastHeartbeatTime = metaV1.NewTime(time.Now())
-						}
+				for i := range nodeStatusRequest.Status.Conditions {
+					if time.Since(nodeStatusRequest.Status.Conditions[i].LastHeartbeatTime.Time) > time.Duration(config.Config.NodeUpdateFrequency)*time.Second {
+						nodeStatusRequest.Status.Conditions[i].LastHeartbeatTime = metaV1.NewTime(time.Now())
+					}
 
-						if time.Since(nodeStatusRequest.Status.Conditions[i].LastTransitionTime.Time) > time.Duration(config.Config.NodeUpdateFrequency)*time.Second {
-							nodeStatusRequest.Status.Conditions[i].LastTransitionTime = metaV1.NewTime(time.Now())
-						}
+					if time.Since(nodeStatusRequest.Status.Conditions[i].LastTransitionTime.Time) > time.Duration(config.Config.NodeUpdateFrequency)*time.Second {
+						nodeStatusRequest.Status.Conditions[i].LastTransitionTime = metaV1.NewTime(time.Now())
 					}
 				}
 
@@ -495,36 +503,60 @@ func (uc *UpstreamController) updateNodeStatus() {
 func kubeClientGet(uc *UpstreamController, namespace string, name string, queryType string) (interface{}, string, error) {
 	switch queryType {
 	case model.ResourceTypeConfigmap:
-		configMap, err := uc.kubeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := configMap.ResourceVersion
+		configMap, err := uc.configMapLister.ConfigMaps(namespace).Get(name)
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = configMap.ResourceVersion
+		}
 		return configMap, resourceVersion, err
 	case model.ResourceTypeSecret:
-		secret, err := uc.kubeClient.CoreV1().Secrets(namespace).Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := secret.ResourceVersion
+		secret, err := uc.secretLister.Secrets(namespace).Get(name)
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = secret.ResourceVersion
+		}
 		return secret, resourceVersion, err
 	case common.ResourceTypeService:
-		svc, err := uc.kubeClient.CoreV1().Services(namespace).Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := svc.ResourceVersion
+		svc, err := uc.serviceLister.Services(namespace).Get(name)
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = svc.ResourceVersion
+		}
 		return svc, resourceVersion, err
 	case common.ResourceTypeEndpoints:
-		eps, err := uc.kubeClient.CoreV1().Endpoints(namespace).Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := eps.ResourceVersion
+		eps, err := uc.endpointLister.Endpoints(namespace).Get(name)
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = eps.ResourceVersion
+		}
 		return eps, resourceVersion, err
 	case common.ResourceTypePersistentVolume:
 		pv, err := uc.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := pv.ResourceVersion
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = pv.ResourceVersion
+		}
 		return pv, resourceVersion, err
 	case common.ResourceTypePersistentVolumeClaim:
 		pvc, err := uc.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := pvc.ResourceVersion
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = pvc.ResourceVersion
+		}
 		return pvc, resourceVersion, err
 	case common.ResourceTypeVolumeAttachment:
 		va, err := uc.kubeClient.StorageV1().VolumeAttachments().Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := va.ResourceVersion
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = va.ResourceVersion
+		}
 		return va, resourceVersion, err
 	case model.ResourceTypeNode:
-		node, err := uc.kubeClient.CoreV1().Nodes().Get(context.Background(), name, metaV1.GetOptions{})
-		resourceVersion := node.ResourceVersion
+		node, err := uc.nodeLister.Get(name)
+		resourceVersion := ""
+		if err == nil {
+			resourceVersion = node.ResourceVersion
+		}
 		return node, resourceVersion, err
 	default:
 		err := stderrors.New("Wrong query type")
@@ -940,15 +972,16 @@ func (uc *UpstreamController) nodeMsgResponse(nodeName, namespace, content strin
 }
 
 // NewUpstreamController create UpstreamController from config
-func NewUpstreamController() (*UpstreamController, error) {
-	cli, err := utils.KubeClient()
-	if err != nil {
-		klog.Warningf("create kube client failed with error: %s", err)
-		return nil, err
-	}
+func NewUpstreamController(factory k8sinformer.SharedInformerFactory) (*UpstreamController, error) {
 	uc := &UpstreamController{
-		kubeClient:   cli,
+		kubeClient:   client.GetKubeClient(),
 		messageLayer: messagelayer.NewContextMessageLayer(),
 	}
+	uc.nodeLister = factory.Core().V1().Nodes().Lister()
+	uc.endpointLister = factory.Core().V1().Endpoints().Lister()
+	uc.serviceLister = factory.Core().V1().Services().Lister()
+	uc.podLister = factory.Core().V1().Pods().Lister()
+	uc.configMapLister = factory.Core().V1().ConfigMaps().Lister()
+	uc.secretLister = factory.Core().V1().Secrets().Lister()
 	return uc, nil
 }
